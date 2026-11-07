@@ -74,4 +74,17 @@ function parseInstant(html) {
   };
 }
 
-module.exports = { parseSounds, parseProfile, parseInstant };
+// Account lists (favorites, uploads, profiles) carry the site's own "Previous page / 1 2 3 /
+// Next page" row. The big lists (trending, recent, categories, search) scroll endlessly on the
+// site and have none, so this returns null for them.
+function parsePager(html) {
+  const ul = html.match(/<ul class="pagination">([\s\S]*?)<\/ul>/);
+  if (!ul) return null;
+  const nums = [...ul[1].matchAll(/class="page-link"[^>]*>\s*(\d+)\s*</g)].map((m) => +m[1]);
+  return {
+    last: nums.length ? Math.max(...nums) : 1,
+    hasNext: !/<li class="[^"]*\bdisabled\b[^"]*">\s*<a[^>]*>\s*Next page/.test(ul[1]),
+  };
+}
+
+module.exports = { parseSounds, parseProfile, parseInstant, parsePager };

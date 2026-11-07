@@ -1,7 +1,7 @@
 const { app, BrowserWindow, BrowserView, ipcMain, shell, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { parseSounds, parseProfile, parseInstant } = require('./parse');
+const { parseSounds, parseProfile, parseInstant, parsePager } = require('./parse');
 const os = require('os');
 const { execFile } = require('child_process');
 
@@ -211,11 +211,13 @@ const withPage = (p, n) => (n > 1 ? p + (p.includes('?') ? '&' : '?') + 'page=' 
 // 'sounds' below already handles it — no separate endpoint needed.
 ipcMain.handle('sounds', async (_e, { path: p, page }) => {
   const tries = p === '/en/index/il/' ? [p, '/en/index/us/'] : [p];
+  let html;
   for (const t of tries) {
-    const sounds = parseSounds(await getHtml(withPage(t, page || 1)));
-    if (sounds.length) return sounds.map((s) => ({ name: s.name, url: BASE + s.path, page: s.page, color: s.color, id: s.id }));
+    html = await getHtml(withPage(t, page || 1));
+    const sounds = parseSounds(html);
+    if (sounds.length) return { sounds: sounds.map((s) => ({ name: s.name, url: BASE + s.path, page: s.page, color: s.color, id: s.id })), pager: parsePager(html) };
   }
-  return [];
+  return { sounds: [], pager: parsePager(html) };
 });
 
 ipcMain.handle('profile', async (_e, soundPage) => {

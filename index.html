@@ -146,12 +146,19 @@
     border: 1px solid #38444d; border-radius: 6px; padding: 7px 16px; cursor: pointer;
   }
   #note button:hover { background: #34465a; }
-  #more {
-    display: block; margin: 8px auto 0; font: inherit; color: var(--text); background: #2b3947;
-    border: 1px solid #38444d; border-radius: 6px; padding: 8px 22px; cursor: pointer;
+  /* Same shape as the site's Bootstrap pagination: one joined row of buttons. */
+  #pager { display: flex; justify-content: center; margin: 8px auto 0; }
+  #pager:empty { display: none; }
+  #pager button, #pager .gap {
+    font: inherit; font-size: 15px; color: #8ab4ff; background: #22303c; border: 1px solid #38444d;
+    margin-left: -1px; padding: 7px 13px; min-width: 40px; cursor: pointer;
   }
-  #more:hover { background: #34465a; }
-  #more[hidden] { display: none; }
+  #pager > :first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+  #pager > :last-child { border-radius: 0 6px 6px 0; }
+  #pager button:hover:not(:disabled) { background: #2b3947; }
+  #pager button.active { background: #355a82; border-color: #355a82; color: #fff; cursor: default; position: relative; }
+  #pager button:disabled:not(.active), #pager .gap { color: #6b7c8c; cursor: default; }
+  #pager button:focus-visible { outline: 2px solid #8ab4ff; outline-offset: -2px; position: relative; }
   #toast {
     position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 8px 16px;
     background: #38444d; color: #fff; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .15s;
@@ -184,7 +191,7 @@
     <div class="crumb"><button id="crumb-home">Myinstants</button> &gt; <span id="title"></span></div>
     <div id="grid"></div>
     <div id="note"></div>
-    <button id="more" hidden>Load more</button>
+    <nav id="pager" aria-label="Pages"></nav>
   </div>
 </div>
 <div id="toast" role="status"></div>
@@ -310,7 +317,7 @@
           await window.api.deleteSound(s.id);
           deleted.add(s.id);
           toast('Sound deleted');
-          show(view);
+          show(view, pageNo); // stay on the same page of the list
         } catch (e) {
           del.disabled = false;
           toast(e.message.includes('sign in') ? 'Sign in on myinstants.com first' : "Couldn't delete the sound");
@@ -360,7 +367,7 @@
     hideSitePage();
     const mine = ++seq;
     view = { key: 'upload' }; setActive('upload');
-    $('title').textContent = 'Upload'; $('grid').replaceChildren(); $('note').textContent = ''; $('more').hidden = true; $('scroll').scrollTop = 0;
+    $('title').textContent = 'Upload'; $('grid').replaceChildren(); $('note').textContent = ''; $('pager').replaceChildren(); $('scroll').scrollTop = 0;
 
     const form = el('form', 'upload-form');
     const field = (labelText, input) => {
@@ -437,39 +444,65 @@
     }
   }
 
-  async function fetchPage(v, n) {
-    const sounds = await window.api.sounds(v.path, n);
-    return { sounds, hasMore: sounds.length > 0 };
+  // What the site serves per page on its endless lists, which have no page numbers of their own:
+  // a full page means there's probably another one after it.
+  const PAGE_SIZE = 36;
+
+  // 1 … 4 5 6 … 12: first, last, and the current page's neighbours.
+  function pageNumbers(cur, last) {
+    const keep = [...new Set([1, cur - 1, cur, cur + 1, last])].filter((n) => n >= 1 && n <= last).sort((a, b) => a - b);
+    const out = [];
+    keep.forEach((n, i) => { if (i && n - keep[i - 1] > 1) out.push('…'); out.push(n); });
+    return out;
   }
 
-  // v = { key, title, path | query }; append = next page into the same list.
-  async function show(v, append = false) {
+  function renderPager({ sounds, pager }) {
+    // The site's own numbers where it has them (account lists); otherwise every page seen so far,
+    // plus one more while the current page is full.
+    const hasNext = pager ? pager.hasNext : sounds.length >= PAGE_SIZE;
+    const last = pager ? Math.max(pager.last, pageNo) : Math.max(view.maxSeen || 1, pageNo + (hasNext ? 1 : 0));
+    view.maxSeen = last;
+    const nav = $('pager');
+    if (last <= 1) return;
+    const btn = (label, page, { active = false, disabled = false } = {}) => {
+      const b = el('button', active ? 'active' : ''); b.type = 'button'; b.textContent = label;
+      b.disabled = active || disabled;
+      if (active) b.setAttribute('aria-current', 'page');
+      b.addEventListener('click', () => show(view, page));
+      nav.append(b);
+    };
+    btn('Previous page', pageNo - 1, { disabled: pageNo === 1 });
+    for (const n of pageNumbers(pageNo, last)) {
+      if (n === '…') nav.append(Object.assign(el('span', 'gap'), { textContent: '…' }));
+      else btn(String(n), n, { active: n === pageNo });
+    }
+    btn('Next page', pageNo + 1, { disabled: !hasNext });
+  }
+
+  // v = { key, title, path | query }; page = which page of it to show.
+  async function show(v, page = 1) {
     hideSitePage();
     const mine = ++seq;
-    if (!append) {
-      view = v; pageNo = 1; setActive(v.key);
-      $('title').textContent = v.title;
-      $('grid').replaceChildren(); $('more').hidden = true; $('scroll').scrollTop = 0;
-    } else pageNo++;
+    if (v !== view) v.maxSeen = 0; // a fresh visit forgets how far an earlier one paged
+    view = v; pageNo = page; setActive(v.key);
+    $('title').textContent = v.title;
+    $('grid').replaceChildren(); $('pager').replaceChildren(); $('scroll').scrollTop = 0;
 
     $('note').textContent = 'Loading…';
     let result;
-    try { result = await fetchPage(view, pageNo); }
+    try { result = await window.api.sounds(view.path, pageNo); }
     catch (e) {
-      if (mine === seq) {
-        if (append) pageNo--;
-        showError(`Couldn't reach myinstants.com (${e.message.replace(/^.*Error: /, '')}).`, view.path);
-      }
+      if (mine === seq) showError(`Couldn't reach myinstants.com (${e.message.replace(/^.*Error: /, '')}).`, view.path);
       return;
     }
     await tileImagesReady;
     if (mine !== seq) return;
-    $('note').textContent = result.sounds.length || append ? '' : (view.empty || 'No sounds here.');
+    $('note').textContent = result.sounds.length ? '' : (pageNo > 1 ? 'No more sounds.' : view.empty || 'No sounds here.');
     // The site warns a deletion can take a while to leave its cache; never show one we deleted.
     const tiles = result.sounds.filter((s) => !deleted.has(s.id)).map(tileFor);
     tiles.forEach((t, i) => t.style.setProperty('--i', i)); // stagger the fade-in
     $('grid').append(...tiles);
-    $('more').hidden = !result.hasMore;
+    renderPager(result);
   }
 
   async function openProfile(s) {
@@ -489,7 +522,7 @@
   async function openSound(s) {
     const mine = ++seq;
     view = { key: 'sound:' + s.page }; setActive(view.key);
-    $('title').textContent = s.name; $('grid').replaceChildren(); $('more').hidden = true; $('scroll').scrollTop = 0;
+    $('title').textContent = s.name; $('grid').replaceChildren(); $('pager').replaceChildren(); $('scroll').scrollTop = 0;
     $('note').textContent = 'Loading…';
     let d;
     try { d = await window.api.instant(s.page); }
@@ -620,7 +653,6 @@
   let timer;
   $('q').addEventListener('input', (e) => { clearTimeout(timer); timer = setTimeout(() => search(e.target.value), 350); });
   $('stop').addEventListener('click', stopAll);
-  $('more').addEventListener('click', () => show(view, true));
   $('vol').addEventListener('input', (e) => { if (current) current.volume = +e.target.value; });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') { stopAll(); closeMenus(); } });
 
