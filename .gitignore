@@ -1,0 +1,5 @@
+node_modules/
+bin/
+MyInstants-darwin-*/
+*.zip
+.DS_Store

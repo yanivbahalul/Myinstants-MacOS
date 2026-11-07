@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; media-src https://www.myinstants.com; img-src https://www.myinstants.com data:">
+<title>Myinstants</title>
+<style>
+  /* Values measured from the live myinstants.com (dark theme). */
+  :root {
+    --bg: #15202b; --nav: #1e2732; --text: #eee; --muted: #9e9e9e;
+    --site: https://www.myinstants.com;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  body { display: flex; flex-direction: column; user-select: none; }
+
+  header {
+    height: 61px; flex: none; display: flex; align-items: center; gap: 8px;
+    padding: 0 14px 0 84px; /* room for the traffic lights */
+    background: var(--nav); -webkit-app-region: drag; position: relative; z-index: 5;
+  }
+  header > *, header button, header input { -webkit-app-region: no-drag; }
+  .brand { font-size: 20px; color: #fff; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-size: 20px; }
+  .search { position: relative; width: 150px; flex: none; }
+  .search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; fill: none; stroke: #777; stroke-width: 2; }
+  #q {
+    width: 100%; font: inherit; font-size: 16px; color: #222; background: #fff;
+    border: 0; border-radius: 999px; padding: 7px 14px 7px 36px; outline: none; user-select: text;
+  }
+  #q:focus-visible { box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
+  #q::placeholder { color: #777; }
+  .grow { flex: 1; }
+  .link { font: inherit; font-size: 15px; white-space: nowrap; color: rgba(255,255,255,.85); background: none; border: 0; padding: 6px 2px; cursor: pointer; }
+  .link:hover, .link.active { color: #fff; }
+  .link:focus-visible, .brand:focus-visible, .pill:focus-visible { outline: 2px solid #8ab4ff; outline-offset: 2px; }
+  .caret::after { content: ""; display: inline-block; margin-left: 6px; vertical-align: .2em; border-top: .3em solid; border-right: .3em solid transparent; border-left: .3em solid transparent; }
+  .dd { position: relative; }
+  .menu {
+    position: absolute; top: 100%; left: 0; margin-top: 6px; min-width: 190px; padding: 6px 0;
+    background: var(--nav); border: 1px solid #38444d; border-radius: 8px; box-shadow: 0 8px 20px rgba(0,0,0,.45);
+  }
+  .menu.right { left: auto; right: 0; }
+  .menu[hidden] { display: none; }
+  .menu button { display: block; width: 100%; text-align: start; font: inherit; color: var(--text); background: none; border: 0; padding: 6px 16px; cursor: pointer; }
+  .menu button:hover { background: #2b3947; }
+  #vol { width: 60px; accent-color: #6ea0d6; }
+  .pill { font: inherit; font-size: 13px; white-space: nowrap; color: #cfe0f3; background: #2c4a6b; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+  .pill:hover { background: #355a82; }
+
+  /* Side panels are striped like the site's ad rails; the content column sits between them. */
+  #scroll { flex: 1; overflow-y: auto; background: var(--bg) url(https://www.myinstants.com/media/images/ad-background.png); }
+  .col { max-width: 1170px; min-height: 100%; margin: 0 auto; padding: 28px 20px 40px; background: var(--bg); }
+  .crumb { text-align: center; font-size: 14px; margin-bottom: 30px; }
+  .crumb button { font: inherit; color: var(--text); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+  .crumb span { color: var(--text); }
+
+  #grid { display: flex; flex-wrap: wrap; justify-content: center; max-width: 960px; margin: 0 auto; }
+
+  /* One sound, built the way the site builds it: coloured disc, glossy sprite on top, drop shadow. */
+  .tile { position: relative; vertical-align: top; width: 94px; margin: 0 4px 26px; text-align: center; overflow-wrap: break-word; }
+  .bg { width: 86px; height: 84px; margin: 3px 0 0 3px; position: absolute; border-radius: 50%; background-color: var(--c, #ff0000); }
+  .btn {
+    width: 94px; height: 89px; position: absolute; left: 0; top: 0; border: 0; padding: 0; cursor: pointer;
+    background: url(https://www.myinstants.com/media/images/transparent_button_small_sprite.png) -5px -5px no-repeat;
+  }
+  .btn:active { background-position: -109px -5px; }
+  .btn:focus-visible { outline: 2px solid #8ab4ff; border-radius: 50%; }
+  .shadow { width: 94px; height: 89px; margin-bottom: 5px; background: url(https://www.myinstants.com/media/images/transparent_button_small_shadow.png) no-repeat; }
+  /* A dedicated rule, not shared with .name-btn: that class's `font: inherit` shorthand would reset
+     this font-size/line-height (equal specificity, source order would decide), breaking the exact
+     2-line clip below and letting a sliver of a 3rd line peek through on long titles. */
+  .name {
+    display: block; width: 100%; font-size: 14px; line-height: 1.4em; height: 2.8em; overflow: hidden;
+    overflow-wrap: break-word; text-decoration: underline; color: var(--text);
+    background: none; border: 0; padding: 0; text-align: inherit; cursor: pointer;
+  }
+  .share { margin-top: 5px; display: flex; justify-content: center; gap: 3px; }
+  .share button { width: 25px; height: 26px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .share img { width: 25px; height: 25px; display: block; pointer-events: none; }
+  .share .heart.fav img { content: url(data:image/webp;base64,UklGRjoCAABXRUJQVlA4TC4CAAAvH8AHEH/jIJIkRerjZ5bw/g29CsbpLhuM3LYNw6TFjvv/R3ccxKaRJEe1e/cuehLPn91HbthEtu1k//8EJ/h3QIUGJGSocvVCuHS11+/oNOueOvifKTCAikBKBHBhoDjiF8VFFYFmSHwLQ32qeIZEAhgJCQD+8S8KVQSJv0iA4FcAh3cHQAQBjG84CgFRAiR+SACg/wZAIrBQAAA2W9opHY6nzbds72EYeqy3dEOHaeiHAd2UBqf9nJ9pNqWBuERoFHI2vOIUv9RIfzTqaNRwfc8esAWATaN0t8PdXQ5353BnOAx3z1z//5Uk3cYXRPSfgSRJTXZYMG1hOHyEkKBEvucYhuP5kSJSoAYmSDADNWkrDi1IwApjqfMupMDNS5yzIRV2jm8Tp2p0M2ZnU50kgRAyEOKsdKLu6bu54Vq8g7K3h83iSw2ZRxUiwBuoWNCRmxaA+nUN2e3A+wmEQj7HrE65a63a0Sh71fiBlAjdfMWkFxo0zjNmIx9zBZ3T1y5REbO+h7kJ7uufFYm2Mes5mBvimpHta4uYdQzMNfLDJ5VrEr1j1iCCeT6Mfkj2S4kcorpjpt5H5sNOIDseEL7PiS8a9pnegOD5QOknOmpifmK340fAGCdtcJl4tYTdTaTwcv+dRN2/oJfK2c2YigiAM3Cp62MbeJZvQ0DqitN1qvf8+fUXGJaaVJfNt1NbB58JdZlU17UjX20JdZ15XWReV5nXZeZ1/V//haz/FQE=); }
+
+  .name-btn { font: inherit; color: var(--text); background: none; border: 0; padding: 0; cursor: pointer; }
+
+  .detail { max-width: 480px; margin: 0 auto 40px; text-align: center; }
+  .detail h1 { font-size: 26px; margin: 0 0 22px; word-break: break-word; }
+  .detail .tile { margin: 0 auto; }
+  /* The detail page's big button is not a scaled-up small button — myinstants.com serves it as its
+     own dedicated sprite (xtransparent_button_sprite.png) at its own native size, measured straight
+     off the live site's rendered #instant-page-button: a 190x190 wrap, a 188x174 circle offset
+     6px/7px inside it, and a 200x190 button+shadow pair. Reusing the small-button sprite scaled 1.4x
+     (the previous approach) doesn't share the same proportions, which is what read as "crooked". */
+  .hero-wrap { position: relative; width: 190px; height: 190px; margin: 0 auto 18px; }
+  .hero-circle { position: absolute; left: 6px; top: 7px; width: 188px; height: 174px; border-radius: 50%; background-color: var(--c, #ff0000); }
+  .hero-btn {
+    width: 200px; height: 190px; position: absolute; left: 0; top: 0; border: 0; padding: 0; cursor: pointer;
+    /* Unlike the small-button sprite, this one is only served at this exact PageSpeed-rewritten
+       path (the plain /xtransparent_button_sprite.png 404s) — confirmed live before using it. */
+    background: url(https://www.myinstants.com/media/images/xtransparent_button_sprite.png.pagespeed.ic.15KLBY15iy.webp) -5px -5px no-repeat;
+  }
+  .hero-btn:active { background-position: -215px -5px; }
+  .hero-btn:focus-visible { outline: 2px solid #8ab4ff; border-radius: 50%; }
+  .hero-shadow { width: 200px; height: 190px; background: url(https://www.myinstants.com/media/images/transparent_button_shadow.png) no-repeat; }
+  .detail .meta { color: var(--muted); font-size: 14px; margin: 14px 0 4px; }
+  .detail .meta b { color: var(--text); }
+  .detail .meta a { color: #8ab4ff; }
+  .detail .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 18px; }
+  .detail .actions button {
+    font: inherit; font-size: 14px; color: var(--text); background: #2c4a6b; border: 0;
+    border-radius: 8px; padding: 10px 16px; cursor: pointer;
+  }
+  .detail .actions button:hover { background: #355a82; }
+  .related { margin-top: 34px; }
+  .related h2 { font-size: 16px; font-weight: 600; margin-bottom: 18px; text-align: center; }
+
+  /* Built as our own page instead of embedding the real /en/new/ — that one comes with ads and ran
+     into a real Electron BrowserView/<webview> bug where its own Category <select> dropdown renders
+     as a broken full-size grey overlay instead of a normal popup. Field names/values below are
+     copied straight off the live form's markup (see main.js's submit-upload handler). */
+  .upload-form { max-width: 480px; margin: 0 auto 40px; text-align: left; }
+  .upload-form label { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 4px; }
+  .upload-form input[type="text"], .upload-form select {
+    width: 100%; font: inherit; font-size: 15px; color: var(--text); background: #1e2732;
+    border: 1px solid #38444d; border-radius: 6px; padding: 8px 10px; outline: none;
+  }
+  .upload-form input[type="text"]:focus-visible, .upload-form select:focus-visible { box-shadow: 0 0 0 2px #8ab4ff; }
+  .upload-form input[type="color"] { width: 60px; height: 34px; border: 1px solid #38444d; border-radius: 6px; background: none; padding: 2px; cursor: pointer; }
+  .upload-form input[type="file"] { display: block; width: 100%; color: var(--text); font: inherit; font-size: 14px; }
+  .upload-form .terms { display: flex; align-items: center; gap: 8px; margin: 18px 0; font-size: 14px; }
+  .upload-form .terms label { display: inline; margin: 0; color: var(--text); }
+  .upload-form .terms a { color: #8ab4ff; }
+  .upload-form button[type="submit"] {
+    width: 100%; font: inherit; font-size: 15px; color: #fff; background: #2c4a6b; border: 0;
+    border-radius: 8px; padding: 12px; cursor: pointer; margin-top: 8px;
+  }
+  .upload-form button[type="submit"]:hover { background: #355a82; }
+  .upload-form button[type="submit"]:disabled { opacity: .6; cursor: default; }
+
+  #note { color: var(--muted); padding: 40px 0; text-align: center; font-size: 15px; line-height: 1.6; }
+  #note button {
+    display: block; margin: 10px auto 0; font: inherit; font-size: 14px; color: var(--text); background: #2b3947;
+    border: 1px solid #38444d; border-radius: 6px; padding: 7px 16px; cursor: pointer;
+  }
+  #note button:hover { background: #34465a; }
+  #more {
+    display: block; margin: 8px auto 0; font: inherit; color: var(--text); background: #2b3947;
+    border: 1px solid #38444d; border-radius: 6px; padding: 8px 22px; cursor: pointer;
+  }
+  #more:hover { background: #34465a; }
+  #more[hidden] { display: none; }
+  #toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 8px 16px;
+    background: #38444d; color: #fff; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .15s;
+  }
+  #toast.show { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+</style>
+</head>
+<body>
+<header>
+  <button class="brand" id="brand">Myinstants</button>
+  <div class="search">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M15.5 15.5 21 21"/></svg>
+    <input id="q" type="search" placeholder="Search" autofocus>
+  </div>
+  <div class="grow"></div>
+  <button class="link" id="nav-home">Home</button>
+  <button class="link" id="nav-recent">Just added</button>
+  <div class="dd">
+    <button class="link caret" id="nav-cats" aria-haspopup="true">Categories</button>
+    <div id="catmenu" class="menu" hidden></div>
+  </div>
+  <button class="link" id="nav-upload">Upload</button>
+  <div class="dd" id="account"></div>
+  <input id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+  <button class="pill" id="stop" title="Esc">Stop all</button>
+</header>
+<div id="scroll">
+  <div class="col">
+    <div class="crumb"><button id="crumb-home">Myinstants</button> &gt; <span id="title"></span></div>
+    <div id="grid"></div>
+    <div id="note"></div>
+    <button id="more" hidden>Load more</button>
+  </div>
+</div>
+<div id="toast" role="status"></div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const SITE = 'https://www.myinstants.com';
+  let current = null; // only one sound plays at a time, like the site
+
+  const HOME = { key: 'home', title: 'Trending in Israel', path: '/en/index/il/' };
+  const RECENT = { key: 'recent', title: 'Just added', path: '/en/recent/' };
+  // [label, browse slug, upload form's numeric category id] — slug is for /en/categories/<slug>/,
+  // id is what the upload form's <select name=category> actually posts; both read off the live site.
+  const CATEGORIES = [
+    ['Anime & Manga', 'anime & manga', '6'], ['Games', 'games', '2'], ['Memes', 'memes', '12'],
+    ['Movies', 'movies', '3'], ['Music', 'music', '11'], ['Politics', 'politics', '10'],
+    ['Pranks', 'pranks', '13'], ['Reactions', 'reactions', '14'], ['Sound Effects', 'sound effects', '9'],
+    ['Sports', 'sports', '15'], ['Television', 'television', '4'], ['Tiktok Trends', 'tiktok trends', '16'],
+    ['Viral', 'viral', '5'], ['Whatsapp Audios', 'whatsapp audios', '17'],
+  ];
+
+  // The owner-only uploads page — unlike the public /en/profile/<name>/uploaded/, it carries the delete buttons.
+  const UPLOADED = { key: 'acc:up', title: 'Uploaded', path: '/en/uploaded/', empty: "You haven't uploaded any sounds yet." };
+  const DELETE_ICON = 'data:image/webp;base64,UklGRnoBAABXRUJQVlA4TG4BAAAvH8AHEG+hoI0kZc7C+/fGEhjXhsK2bRsF/f/hSYZt20ZSu0H33+65uwn+c21WkWQ1aiTgXw8WUMAfl3O+IEh+FT+7ls+mx2P1n152/Pq/3JbHHin34Hd3CIXCJb+Y/3FJc3lsekhsv58RG/ERPzEadk3pmJxEphKQxkrSquVcao/BjeI4rYPDSJJV5S3u7rDfXfIPkH/HOyKI6D8Dt40UrY8ZOvsIp+irIkvCMMmKqnceujyiIsq7X0ttGfCHoGzVsUnpIW2UsY7pJa7lsudIxsPFVu712dl+W0mD0jnXiRtdd0f5OMfdVdyncy7n0ArjMwfOY6w4lLte/o49ML2T5H0K7OUP6iv5Mp81MH+Szzmw/sinqQpKrwWwfL+XwOJFqcioeMyAzQaYPajIEmpuEwCY3KhJQqoOI2B0oCq0N/uK/RD7hez/xf5f7blQcnXZnuTLnLYXmStzLu25NteFua7MdWmu63/1C+Z+xQE=';
+  const deleted = new Set();
+
+  let view = HOME, pageNo = 1, seq = 0, toastTimer;
+
+  const el = (tag, cls) => Object.assign(document.createElement(tag), { className: cls || '' });
+  const icon = (name) => Object.assign(el('img'), { src: `${SITE}/media/images/icons/${name}.svg`, alt: '' });
+
+  function toast(msg) {
+    $('toast').textContent = msg; $('toast').classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('show'), 1400);
+  }
+
+  function stopAll() {
+    if (current) { current.pause(); current = null; }
+  }
+
+  function play(s) {
+    stopAll();
+    const a = new Audio(s.url);
+    a.volume = +$('vol').value;
+    current = a;
+    a.play().catch(() => {});
+  }
+
+  function tileFor(s) {
+    const tile = el('div', 'tile');
+    tile.style.setProperty('--c', s.color || '#ff0000');
+    const box = el('div', 'orbwrap');
+    const btn = el('button', 'btn'); btn.title = `Play ${s.name}`; btn.type = 'button';
+    btn.addEventListener('click', () => play(s));
+    box.append(el('div', 'bg'), btn, el('div', 'shadow'));
+
+    const name = el('button', 'name'); name.dir = 'auto'; name.textContent = s.name;
+    if (s.page) { name.title = 'Open sound page'; name.addEventListener('click', () => openSound(s)); }
+
+    // Favoriting calls the site's own /api/v1/favorite/add/<id>/; unfavoriting is a different,
+    // unrelated endpoint (/remove/<id>/ — confirmed straight off the Favorites page's own remove
+    // button, see main.js). Real account favorites, not local-only bookmarks. Both need the sound's
+    // numeric id, scraped off the tile's own markup — present on every list now that search scrapes
+    // /en/search/ the same as everything else, but kept as a defensive fallback in case a tile's
+    // markup is ever missing it.
+    const heart = el('button', 'heart'); heart.append(icon('heart'));
+    if (!s.id) {
+      heart.disabled = true; heart.title = "Can't favorite this (myinstants.com didn't give an id for it)";
+    } else {
+      // On the Favorites page every sound is already favorited — start with the heart filled.
+      if (view.key === 'acc:favs') { heart.classList.add('fav'); heart.title = 'Remove from favorites'; }
+      else { heart.title = 'Add to favorites'; }
+      heart.addEventListener('click', async () => {
+        heart.disabled = true;
+        const wasFav = heart.classList.contains('fav');
+        try {
+          if (wasFav) {
+            await window.api.unfavorite(s.id);
+            toast('Removed from favorites');
+            // On the real site, removing a favorite does a full page reload, which drops it from
+            // the list — matching that here (rather than just un-filling the heart) since every
+            // sound on this view only appears because it's favorited, same removal.
+            if (view.key === 'acc:favs') { tile.remove(); return; }
+            heart.classList.remove('fav');
+            heart.title = 'Add to favorites';
+          } else {
+            await window.api.favorite(s.id);
+            heart.classList.add('fav');
+            heart.title = 'Remove from favorites';
+            toast('Added to favorites');
+          }
+        } catch (e) {
+          toast(e.message.includes('sign in') ? 'Sign in on myinstants.com first' : "Couldn't update favorite");
+        } finally {
+          heart.disabled = false;
+        }
+      });
+    }
+    const link = el('button'); link.title = 'Copy page link'; link.append(icon('link'));
+    link.addEventListener('click', () => { navigator.clipboard.writeText(SITE + (s.page || '')); toast('Link copied'); });
+    const share = el('button'); share.title = 'Copy sound file link'; share.append(icon('share-round'));
+    share.addEventListener('click', () => { navigator.clipboard.writeText(s.url); toast('Sound link copied'); });
+    const shareBox = el('div', 'share'); shareBox.append(heart, link, share);
+    if (view.key === 'acc:up' && s.id) {
+      const del = el('button'); del.title = `Delete ${s.name}`;
+      del.append(Object.assign(el('img'), { src: DELETE_ICON, alt: '' }));
+      del.addEventListener('click', async () => {
+        // Same wording as the site's own deleteInstant() confirm.
+        if (!confirm('Do you wanna delete this button? This operation is permanent. It takes 1 day to fully clean from site cache.')) return;
+        del.disabled = true;
+        try {
+          await window.api.deleteSound(s.id);
+          deleted.add(s.id);
+          toast('Sound deleted');
+          show(view);
+        } catch (e) {
+          del.disabled = false;
+          toast(e.message.includes('sign in') ? 'Sign in on myinstants.com first' : "Couldn't delete the sound");
+        }
+      });
+      // Like the site's own uploads page: X instead of the heart, which also keeps the row within the tile.
+      heart.replaceWith(del);
+    }
+
+    tile.append(box, name, shareBox);
+    tile.addEventListener('contextmenu', (e) => { e.preventDefault(); openProfile(s); });
+    return tile;
+  }
+
+  function setActive(key) {
+    $('nav-home').classList.toggle('active', key === 'home');
+    $('nav-recent').classList.toggle('active', key === 'recent');
+    $('nav-cats').classList.toggle('active', key.startsWith('cat:'));
+    $('nav-upload').classList.toggle('active', key === 'upload');
+  }
+
+  // Any real myinstants.com page that needs a real signed-in session (login, upload, settings,
+  // logout) renders here, in-app, on the same partition the hidden scraping windows use — as a
+  // BrowserView the main process positions over this content area (see main.js), not a <webview>
+  // tag: that one sent Origin: null on form POSTs (broke login's CSRF check) and rendered native
+  // <select> dropdowns as a broken full-screen overlay (broke the upload form's category picker) —
+  // both are known <webview> guest-view limitations a BrowserView doesn't have. The main process
+  // also hides that page's own header and holds the view at 0 size until that's done, so there's no
+  // double-header flash; this side just has to get #scroll out of the way underneath it.
+  function showSitePage(path, key) {
+    closeMenus();
+    $('scroll').style.display = 'none';
+    window.api.showSitePage(path);
+    setActive(key);
+  }
+  function hideSitePage() {
+    window.api.hideSitePage();
+    $('scroll').style.display = '';
+    syncAuth();
+  }
+
+  // Our own Upload form, not the real /en/new/ embedded — see the CSS comment above .upload-form
+  // for why. Submits through window.api.submitUpload (main.js), which POSTs the exact same fields
+  // the real form does to the real account, so a successful create is indistinguishable from using
+  // the site directly, just without ads or the broken dropdown.
+  function showUploadForm() {
+    hideSitePage();
+    const mine = ++seq;
+    view = { key: 'upload' }; setActive('upload');
+    $('title').textContent = 'Upload'; $('grid').replaceChildren(); $('note').textContent = ''; $('more').hidden = true; $('scroll').scrollTop = 0;
+
+    const form = el('form', 'upload-form');
+    const field = (labelText, input) => {
+      const l = el('label'); l.textContent = labelText; l.append(input);
+      form.append(l);
+      return input;
+    };
+
+    const nameInput = Object.assign(el('input'), { type: 'text', required: true });
+    field('Name', nameInput);
+    const soundInput = Object.assign(el('input'), { type: 'file', accept: 'audio/*', required: true });
+    field('Sound', soundInput);
+    const imageInput = Object.assign(el('input'), { type: 'file', accept: 'image/*' });
+    field('Image (optional)', imageInput);
+    const colorInput = Object.assign(el('input'), { type: 'color', value: '#ff0000' });
+    field('Color', colorInput);
+    const categorySelect = el('select'); categorySelect.required = true;
+    categorySelect.append(Object.assign(el('option'), { value: '', textContent: '----------' }));
+    categorySelect.append(...CATEGORIES.map(([label, , id]) => Object.assign(el('option'), { value: id, textContent: label })));
+    field('Category', categorySelect);
+    const descInput = el('input'); descInput.type = 'text';
+    field('Description (optional)', descInput);
+    const tagsInput = el('input'); tagsInput.type = 'text';
+    field('Tags (space separated, optional)', tagsInput);
+
+    const termsRow = el('div', 'terms');
+    const termsCheck = Object.assign(el('input'), { type: 'checkbox', required: true });
+    const termsLabel = el('label'); termsLabel.append(termsCheck, ' I accept the ');
+    const termsLink = el('a'); termsLink.href = '#'; termsLink.textContent = 'terms of use';
+    termsLink.addEventListener('click', (e) => { e.preventDefault(); window.api.open('/en/terms_of_use.html'); });
+    termsLabel.append(termsLink);
+    termsRow.append(termsLabel);
+    form.append(termsRow);
+
+    const submitBtn = Object.assign(el('button'), { type: 'submit', textContent: 'Create' });
+    form.append(submitBtn);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!soundInput.files[0]) { toast('Choose a sound file'); return; }
+      submitBtn.disabled = true; submitBtn.textContent = 'Creating…';
+      try {
+        const result = await window.api.submitUpload({
+          name: nameInput.value,
+          soundPath: window.api.getPathForFile(soundInput.files[0]),
+          imagePath: imageInput.files[0] ? window.api.getPathForFile(imageInput.files[0]) : null,
+          color: colorInput.value.replace('#', '').toUpperCase(),
+          category: categorySelect.value,
+          description: descInput.value,
+          tags: tagsInput.value,
+          acceptTerms: termsCheck.checked,
+        });
+        toast('Sound created!');
+        // The site redirects a successful upload to /en/uploaded/, not to the new sound's page.
+        if (mine === seq) show(UPLOADED);
+      } catch (err) {
+        toast(err.message || "Couldn't create the sound");
+      } finally {
+        submitBtn.disabled = false; submitBtn.textContent = 'Create';
+      }
+    });
+
+    $('grid').append(form);
+  }
+
+  // The site's bot protection occasionally 403s a plain fetch from here; a real browser passes
+  // that check, so failed loads offer a one-click fallback to open the same page there.
+  function showError(message, path) {
+    $('note').replaceChildren(document.createTextNode(message));
+    if (path) {
+      const b = el('button'); b.textContent = 'Open on myinstants.com';
+      b.addEventListener('click', () => window.api.open(path));
+      $('note').append(b);
+    }
+  }
+
+  async function fetchPage(v, n) {
+    const sounds = await window.api.sounds(v.path, n);
+    return { sounds, hasMore: sounds.length > 0 };
+  }
+
+  // v = { key, title, path | query }; append = next page into the same list.
+  async function show(v, append = false) {
+    hideSitePage();
+    const mine = ++seq;
+    if (!append) {
+      view = v; pageNo = 1; setActive(v.key);
+      $('title').textContent = v.title;
+      $('grid').replaceChildren(); $('more').hidden = true; $('scroll').scrollTop = 0;
+    } else pageNo++;
+
+    $('note').textContent = 'Loading…';
+    let result;
+    try { result = await fetchPage(view, pageNo); }
+    catch (e) {
+      if (mine === seq) {
+        if (append) pageNo--;
+        showError(`Couldn't reach myinstants.com (${e.message.replace(/^.*Error: /, '')}).`, view.path);
+      }
+      return;
+    }
+    if (mine !== seq) return;
+    $('note').textContent = result.sounds.length || append ? '' : (view.empty || 'No sounds here.');
+    // The site warns a deletion can take a while to leave its cache; never show one we deleted.
+    $('grid').append(...result.sounds.filter((s) => !deleted.has(s.id)).map(tileFor));
+    $('more').hidden = !result.hasMore;
+  }
+
+  async function openProfile(s) {
+    if (!s.page) return;
+    $('note').textContent = 'Opening profile…';
+    try {
+      const name = await window.api.profile(s.page);
+      if (!name) { $('note').textContent = 'This sound has no public profile.'; return; }
+      // /en/profile/<name>/ alone is the user's *favorites* tab on myinstants.com — the sounds they
+      // uploaded live under /uploaded/. Right-clicking a sound to see more from its uploader should
+      // land on their uploads, not an often-empty favorites list.
+      show({ key: 'profile', title: `${name} — Uploaded`, path: `/en/profile/${encodeURIComponent(name)}/uploaded/`, empty: 'This profile has no uploaded sounds.' });
+    } catch { showError("Couldn't open that profile.", s.page); }
+  }
+
+  // A single sound's own page: big button, favourite/view counts, uploader (-> their profile), related sounds.
+  async function openSound(s) {
+    const mine = ++seq;
+    view = { key: 'sound:' + s.page }; setActive(view.key);
+    $('title').textContent = s.name; $('grid').replaceChildren(); $('more').hidden = true; $('scroll').scrollTop = 0;
+    $('note').textContent = 'Loading…';
+    let d;
+    try { d = await window.api.instant(s.page); }
+    catch (e) { if (mine === seq) showError(`Couldn't reach myinstants.com (${e.message.replace(/^.*Error: /, '')}).`, s.page); return; }
+    if (mine !== seq) return;
+    if (!d) { showError("Couldn't load that sound.", s.page); return; }
+    $('note').textContent = '';
+
+    const box = el('div', 'detail');
+    box.append(Object.assign(el('h1'), { dir: 'auto', textContent: d.name }));
+    const heroWrap = el('div', 'hero-wrap'); heroWrap.style.setProperty('--c', d.color || '#ff0000');
+    const heroBtn = el('button', 'hero-btn'); heroBtn.type = 'button'; heroBtn.title = `Play ${d.name}`;
+    heroBtn.addEventListener('click', () => play({ url: d.url }));
+    heroWrap.append(el('div', 'hero-circle'), heroBtn, el('div', 'hero-shadow'));
+    box.append(heroWrap);
+    if (d.favorites) box.append(Object.assign(el('div', 'meta'), { innerHTML: `<b>${d.favorites}</b> users favorited this sound button` }));
+    if (d.uploader) {
+      const m = el('div', 'meta');
+      const a = el('button', 'name-btn'); a.style.textDecoration = 'underline'; a.style.color = '#8ab4ff';
+      a.dir = 'auto'; a.textContent = d.uploader.name;
+      a.addEventListener('click', () => show({ key: 'profile', title: `Profile: ${d.uploader.name}`, path: d.uploader.path, empty: 'This profile has no sounds.' }));
+      m.append('Uploaded by ', a, d.views ? ` - ${d.views} views` : '');
+      box.append(m);
+    }
+    const actions = el('div', 'actions');
+    const act = (label, fn) => { const b = el('button'); b.textContent = label; b.addEventListener('click', fn); actions.append(b); };
+    act('Copy link', () => { navigator.clipboard.writeText(SITE + s.page); toast('Link copied'); });
+    if (d.url) act('Copy sound link', () => { navigator.clipboard.writeText(d.url); toast('Sound link copied'); });
+    box.append(actions);
+
+    if (d.related.length) {
+      const rel = el('div', 'related');
+      rel.append(Object.assign(el('h2'), { textContent: 'You might also like' }));
+      const g = el('div', 'grid-related'); g.style.display = 'flex'; g.style.flexWrap = 'wrap'; g.style.justifyContent = 'center';
+      g.append(...d.related.map(tileFor));
+      rel.append(g);
+      box.append(rel);
+    }
+    $('grid').append(box);
+  }
+
+  const closeMenus = () => document.querySelectorAll('.menu').forEach((m) => { m.hidden = true; });
+  const go = (v) => { $('q').value = ''; closeMenus(); show(v); };
+
+  // The account corner actually reflects whether the shared session is signed in (see syncAuth)
+  // instead of assuming it always is. Favorites/Uploaded/Profile render in-app the same way the
+  // rest of the app scrapes pages; Login/Settings/Logout render the real page in-app too (see
+  // showSitePage) so they land on the *same* session those scrapes use — signing in through a
+  // separate external browser wouldn't share its cookies with this app at all.
+  // /en/my_profile/ redirects to whoever is signed in, so nothing here is tied to one account.
+  const ME_VIEWS = [
+    ['Favorites', { key: 'acc:favs', title: 'Favorites', path: '/en/favorites/', empty: "You haven't favorited anything yet." }],
+    ['Uploaded', UPLOADED],
+    ['Profile', { key: 'acc:profile', title: 'My profile', path: '/en/my_profile/' }],
+  ];
+  const ME_PAGES = [
+    ['Settings', '/en/settings/'],
+    ['Logout', '/accounts/logout/'],
+  ];
+  function renderAccount(loggedIn) {
+    const box = $('account');
+    box.replaceChildren();
+    if (!loggedIn) {
+      const b = el('button', 'link'); b.textContent = 'Login';
+      b.addEventListener('click', () => showSitePage('/accounts/login/', 'site:Login'));
+      box.append(b);
+      return;
+    }
+    const b = el('button', 'link caret'); b.textContent = 'Account';
+    const menu = el('div', 'menu right'); menu.hidden = true;
+    menu.append(...ME_VIEWS.map(([label, v]) => {
+      const i = el('button'); i.textContent = label; i.addEventListener('click', () => go(v)); return i;
+    }));
+    menu.append(...ME_PAGES.map(([label, path]) => {
+      const i = el('button'); i.textContent = label;
+      i.addEventListener('click', () => showSitePage(path, 'site:' + label));
+      return i;
+    }));
+    b.addEventListener('click', (e) => { e.stopPropagation(); const open = menu.hidden; closeMenus(); menu.hidden = !open; });
+    box.append(b, menu);
+  }
+
+  // Starts out showing Login until proven otherwise; re-checked here and every time hideSitePage
+  // runs (i.e. whenever you leave the in-app Login/Settings/Logout page back to the normal app),
+  // which is what makes this actually sync after signing in rather than needing a manual refresh.
+  let isLoggedIn = null;
+  async function syncAuth() {
+    const loggedIn = await window.api.authStatus().catch(() => false);
+    if (loggedIn === isLoggedIn) return;
+    isLoggedIn = loggedIn;
+    renderAccount(loggedIn);
+  }
+  renderAccount(false);
+  syncAuth();
+
+  $('catmenu').replaceChildren(...CATEGORIES.map(([name, slug]) => {
+    const b = el('button'); b.textContent = name;
+    b.addEventListener('click', () => go({ key: 'cat:' + slug, title: name, path: `/en/categories/${encodeURIComponent(slug)}/` }));
+    return b;
+  }));
+  $('nav-cats').addEventListener('click', (e) => { e.stopPropagation(); const open = $('catmenu').hidden; closeMenus(); $('catmenu').hidden = !open; });
+  addEventListener('click', closeMenus);
+  for (const id of ['brand', 'crumb-home', 'nav-home']) $(id).addEventListener('click', () => go(HOME));
+  $('nav-recent').addEventListener('click', () => go(RECENT));
+  $('nav-upload').addEventListener('click', showUploadForm);
+
+  // Pasting (or typing) a real myinstants.com link searches for it as text otherwise — open it
+  // directly instead, the same way clicking a sound/profile elsewhere in the app already does.
+  // There's no way to make the OS hand this app *every* myinstants.com link clicked elsewhere (that
+  // needs Apple's Universal Links, which only the domain's own owner can set up) — this covers the
+  // "I was sent a link" case instead: paste it into search.
+  function tryOpenLink(q) {
+    const m = q.match(/^(?:https?:\/\/)?(?:www\.)?myinstants\.com(\/en\/(?:instant|profile)\/[^\s?#]+\/)/i);
+    if (!m) return false;
+    const path = m[1];
+    if (path.includes('/instant/')) openSound({ page: path });
+    else show({ key: 'profile', title: 'Profile', path, empty: 'This profile has no sounds.' });
+    return true;
+  }
+
+  const search = (q) => {
+    const trimmed = q.trim();
+    if (!trimmed) return show(HOME);
+    if (tryOpenLink(trimmed)) return;
+    show({ key: 'search', title: `Search results for "${trimmed}"`, path: `/en/search/?name=${encodeURIComponent(trimmed)}`, empty: `No sounds found for "${trimmed}".` });
+  };
+  let timer;
+  $('q').addEventListener('input', (e) => { clearTimeout(timer); timer = setTimeout(() => search(e.target.value), 350); });
+  $('stop').addEventListener('click', stopAll);
+  $('more').addEventListener('click', () => show(view, true));
+  $('vol').addEventListener('input', (e) => { if (current) current.volume = +e.target.value; });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') { stopAll(); closeMenus(); } });
+
+  show(HOME);
+</script>
+</body>
+</html>

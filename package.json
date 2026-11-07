@@ -1,0 +1,21 @@
+{
+  "name": "myinstants-macos",
+  "productName": "MyInstants",
+  "version": "2.0.0",
+  "description": "Unofficial native macOS client for myinstants.com: browse, play, favorite, upload and delete instant sound buttons.",
+  "main": "main.js",
+  "license": "UNLICENSED",
+  "scripts": {
+    "ffmpeg": "mkdir -p bin && cp node_modules/ffmpeg-static/ffmpeg node_modules/ffmpeg-static/ffmpeg.LICENSE bin/",
+    "prestart": "npm run ffmpeg",
+    "start": "electron .",
+    "prebuild": "npm run ffmpeg",
+    "build": "electron-packager . MyInstants --platform=darwin --arch=arm64 --overwrite --prune --ignore=^/docs --ignore=README.md",
+    "zip": "ditto -c -k --keepParent MyInstants-darwin-arm64/MyInstants.app MyInstants-macOS-arm64.zip"
+  },
+  "devDependencies": {
+    "@electron/packager": "^18.3.0",
+    "electron": "^33.0.0",
+    "ffmpeg-static": "^5.3.0"
+  }
+}
