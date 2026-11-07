@@ -67,7 +67,7 @@ Your original file is never touched.
 1. **Download** `MyInstants-macOS-arm64.zip` from the [latest release](../../releases/latest).
 2. **Unzip** it and drag **MyInstants.app** into your **Applications** folder.
 3. **First launch:** the app isn't notarized by Apple, so macOS will block a normal double‑click the first time.
-   **Right‑click** the app → **Open** → **Open**. You only need to do this once.
+   **Right‑click** the app → **Open** → **Open**. On macOS 15 Sequoia and later, double‑click once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. You only need to do this once.
 
 <details>
 <summary>😕 Still says the app is "damaged" or "can't be opened"?</summary>
