@@ -31,7 +31,7 @@ async function prepareSound(src) {
   const bare = stripMp3Tags(fs.readFileSync(src));
   if (bare && bare.length <= MAX_SOUND_BYTES) return bare;
   if (!FFMPEG) throw new Error(bare ? 'sound is over 300KB — shrinking it needs ffmpeg' : 'only MP3 files can be uploaded without ffmpeg');
-  const out = path.join(os.tmpdir(), `myinstants-upload-${process.pid}.mp3`);
+  const out = path.join(os.tmpdir(), `myinstants-upload-${process.pid}-${Date.now()}.mp3`);
   try {
     for (const codec of [['-b:a', '96k'], ['-b:a', '64k'], ['-b:a', '48k'], ['-b:a', '32k'], ['-ac', '1', '-b:a', '24k']]) {
       await ffmpeg(['-i', src, '-map', '0:a:0', '-map_metadata', '-1', '-id3v2_version', '0', ...codec, '-f', 'mp3', out]);
@@ -44,6 +44,10 @@ async function prepareSound(src) {
 }
 
 const BASE = 'https://www.myinstants.com';
+// loadURL's promise rejects on any failed or superseded load (ERR_ABORTED when the next request
+// starts first). Failures are already handled through did-fail-load / waitForChallenge, so the
+// promise itself is only silenced here instead of becoming an unhandled rejection.
+const load = (wc, url) => wc.loadURL(url).catch(() => {});
 // No User-Agent override, on purpose — this used to fake a plain-Chrome UA to hide that this is
 // Electron, which is exactly backwards: a UA claiming "Chrome/x" with none of the Client Hints data
 // (sec-ch-ua, userAgentData) a real Chrome install always sends alongside it is a textbook spoof
@@ -88,7 +92,11 @@ function getHiddenWindow() {
 // Cloudflare's block/challenge pages come in several wordings; catch the common ones. A block page
 // silently parsed as "this page has no sounds" is worse than an honest error, so getHtml below throws
 // rather than ever handing one back as if it were real content.
-const CHALLENGE = /Just a moment|cf-browser-verification|Checking your browser|Attention Required|Access denied|Please wait while we verify|Enable JavaScript and cookies|Ray ID|cf-error|cf-wrapper/i;
+// Only the page <title> and Cloudflare's own element ids are checked — never the body text, since a
+// real list can contain a sound literally named "Access denied" or "Just a moment".
+const CHALLENGE_TITLE = /^\s*(?:Just a moment|Checking your browser|Please wait)\s*(?:\.\.\.|…)?\s*$|\bCloudflare\b/i;
+const CHALLENGE_MARKUP = /id="(?:cf-wrapper|cf-error-details|challenge-form|challenge-running)"|class="cf-browser-verification/;
+const isChallenge = (html) => CHALLENGE_TITLE.test((html.match(/<title[^>]*>([^<]*)/i) || [])[1] || '') || CHALLENGE_MARKUP.test(html);
 
 function waitForChallenge(win, maxPolls) {
   return new Promise((resolve, reject) => {
@@ -115,7 +123,7 @@ function waitForChallenge(win, maxPolls) {
     for (let i = 0; i < maxPolls * 4; i++) {
       // the frame can be swapped out mid-redirect, so look it up fresh and retry if it's gone
       const html = await win.webContents.mainFrame.executeJavaScript('document.documentElement.outerHTML').catch(() => '');
-      if (html && !CHALLENGE.test(html)) return html;
+      if (html && !isChallenge(html)) return html;
       await new Promise((r) => setTimeout(r, 250));
     }
     // Still a block/challenge page after waiting — surface that as an error rather than silently
@@ -144,7 +152,7 @@ function getVisibleWindow() {
 // clearance cookie lives in the shared partition, so the hidden window benefits too.
 async function solveChallengeVisibly(p) {
   const win = getVisibleWindow();
-  win.loadURL(BASE + p);
+  load(win, BASE + p);
   win.show();
   try {
     await waitForChallenge(win, 30);
@@ -188,20 +196,21 @@ function fetchHtml(p) {
   p += (p.includes('?') ? '&' : '?') + '_=' + Date.now();
   return withQueue(async () => {
     const win = getHiddenWindow();
-    win.loadURL(BASE + p);
+    load(win, BASE + p);
     try {
       return await waitForChallenge(win, 8);
     } catch (e) {
       if (!e.message.startsWith('challenge:')) throw e; // a real network failure, not a Cloudflare block — a visible window won't fix that
     }
     if (await solveChallengeVisibly(p)) {
-      win.loadURL(BASE + p);
+      load(win, BASE + p);
       try { return await waitForChallenge(win, 8); } catch {}
     }
     throw new Error('blocked by myinstants.com (verification page)');
   });
 }
 
+const toTile = (s) => ({ name: s.name, url: BASE + s.path, page: s.page, color: s.color, id: s.id });
 const withPage = (p, n) => (n > 1 ? p + (p.includes('?') ? '&' : '?') + 'page=' + n : p);
 
 // Search used to go through Myinstants' public JSON API instead of scraping /en/search/ like every
@@ -215,7 +224,7 @@ ipcMain.handle('sounds', async (_e, { path: p, page }) => {
   for (const t of tries) {
     html = await getHtml(withPage(t, page || 1));
     const sounds = parseSounds(html);
-    if (sounds.length) return { sounds: sounds.map((s) => ({ name: s.name, url: BASE + s.path, page: s.page, color: s.color, id: s.id })), pager: parsePager(html) };
+    if (sounds.length) return { sounds: sounds.map(toTile), pager: parsePager(html) };
   }
   return { sounds: [], pager: parsePager(html) };
 });
@@ -229,7 +238,7 @@ ipcMain.handle('instant', async (_e, soundPage) => {
   if (!/^\/en\/instant\/[^/]/.test(soundPage)) throw new Error('bad path');
   const s = parseInstant(await getHtml(soundPage));
   if (!s) return null;
-  return { ...s, url: s.path && BASE + s.path, related: s.related.map((r) => ({ name: r.name, url: BASE + r.path, page: r.page, color: r.color, id: r.id })) };
+  return { ...s, url: s.path && BASE + s.path, related: s.related.map(toTile) };
 });
 
 // Adding and removing a favorite are two unrelated endpoints on the real site, not a symmetric
@@ -246,21 +255,33 @@ ipcMain.handle('instant', async (_e, soundPage) => {
 const DEBUG_LOG = path.join(app.getPath('userData'), 'debug.log');
 function debugLog(msg) { try { fs.appendFileSync(DEBUG_LOG, `[${new Date().toISOString()}] ${msg}\n`); } catch {} }
 
+// Account actions run as scripts inside the hidden window so they're same-origin requests carrying
+// the session cookie; this makes sure that window is actually on myinstants.com first.
+async function ensureOnSite(win, p) {
+  if (win.webContents.getURL().startsWith(BASE)) return;
+  load(win, BASE + p);
+  try { await waitForChallenge(win, 8); } catch {}
+}
+
+// In-page expression for the csrftoken Django will check. The site sets two 'csrftoken' cookies
+// (domain-scoped and host-only) with different values; Django keeps whichever parses last, so take
+// the last match — see submit-upload for the full story.
+const CSRF_JS = `(() => { const m = [...document.cookie.matchAll(/(?:^|; )csrftoken=([^;]+)/g)]; return m.length ? m[m.length - 1][1] : null; })()`;
+
+const signedOut = (status, finalUrl) => status === 401 || String(finalUrl).includes('/accounts/login');
+
 function favAction(url, id) {
   if (!/^\d+$/.test(String(id))) return Promise.reject(new Error('bad id'));
   return withQueue(async () => {
     const win = getHiddenWindow();
-    const beforeUrl = win.webContents.getURL();
-    if (!beforeUrl.startsWith(BASE)) {
-      win.loadURL(BASE + '/en/index/il/');
-      try { await waitForChallenge(win, 8); } catch {}
-    }
-    const result = await win.webContents.executeJavaScript(
+    await ensureOnSite(win, '/en/index/il/');
+    const { status, finalUrl } = await win.webContents.executeJavaScript(
       `fetch('${url}').then((r) => ({ status: r.status, finalUrl: r.url }))`
     );
-    debugLog(`favAction ${url} — status: ${result.status} finalUrl: ${result.finalUrl}`);
-    const { status } = result;
-    if (status === 401) throw new Error('sign in on myinstants.com first');
+    debugLog(`favAction ${url} — status: ${status} finalUrl: ${finalUrl}`);
+    // /remove/<id>/ is a plain page, not the API: signed out it redirects to the login page with a
+    // 200 instead of answering 401, so the final URL is checked too.
+    if (signedOut(status, finalUrl)) throw new Error('sign in on myinstants.com first');
     if (status !== 200) throw new Error(`myinstants.com returned ${status}`);
     clearPageCache();
     return true;
@@ -276,19 +297,15 @@ ipcMain.handle('delete-sound', (_e, id) => {
   if (!/^\d+$/.test(String(id))) return Promise.reject(new Error('bad id'));
   return withQueue(async () => {
     const win = getHiddenWindow();
-    if (!win.webContents.getURL().startsWith(BASE)) {
-      win.loadURL(BASE + '/en/uploaded/');
-      try { await waitForChallenge(win, 8); } catch {}
-    }
+    await ensureOnSite(win, '/en/uploaded/');
     const { status, finalUrl } = await win.webContents.executeJavaScript(`(async () => {
-      const m = [...document.cookie.matchAll(/(?:^|; )csrftoken=([^;]+)/g)];
       const fd = new FormData();
-      fd.append('csrfmiddlewaretoken', m.length ? m[m.length - 1][1] : '');
+      fd.append('csrfmiddlewaretoken', ${CSRF_JS} || '');
       const r = await fetch('/delete/${id}/', { method: 'POST', body: fd, credentials: 'include' });
       return { status: r.status, finalUrl: r.url };
     })()`);
     debugLog(`delete-sound ${id} — status: ${status} finalUrl: ${finalUrl}`);
-    if (status === 401 || finalUrl.includes('/accounts/login')) throw new Error('sign in on myinstants.com first');
+    if (signedOut(status, finalUrl)) throw new Error('sign in on myinstants.com first');
     if (status !== 200) throw new Error(`myinstants.com returned ${status}`);
     clearPageCache();
     return true;
@@ -326,16 +343,13 @@ ipcMain.handle('submit-upload', async (_e, { name, soundPath, imagePath, color, 
   // guaranteed-looking-like-CSRF 403 on every submit regardless of credentials. Reading document.cookie
   // at POST time and taking the last 'csrftoken=' match mirrors how Django's own cookie parser
   // resolves the duplicate, so the token we submit always matches what the server checks against.
+  // Prepared before joining the queue: up to five ffmpeg passes shouldn't hold up page loads.
+  const soundB64 = (await prepareSound(soundPath)).toString('base64');
+  const imageB64 = imagePath ? fs.readFileSync(imagePath).toString('base64') : null;
   return withQueue(async () => {
     const win = getHiddenWindow();
     const beforeUrl = win.webContents.getURL();
-    if (!beforeUrl.startsWith(BASE)) {
-      win.loadURL(BASE + '/en/index/il/');
-      try { await waitForChallenge(win, 8); } catch {}
-    }
-
-    const soundB64 = (await prepareSound(soundPath)).toString('base64');
-    const imageB64 = imagePath ? fs.readFileSync(imagePath).toString('base64') : null;
+    await ensureOnSite(win, '/en/index/il/');
     const script = `(async () => {
       try {
         function toBlob(b64) {
@@ -344,8 +358,7 @@ ipcMain.handle('submit-upload', async (_e, { name, soundPath, imagePath, color, 
           for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
           return new Blob([bytes]);
         }
-        const matches = [...document.cookie.matchAll(/(?:^|; )csrftoken=([^;]+)/g)];
-        const csrfValue = matches.length ? matches[matches.length - 1][1] : null;
+        const csrfValue = ${CSRF_JS};
         if (!csrfValue) return { scriptError: 'no csrftoken cookie visible to document.cookie' };
 
         const fd = new FormData();
@@ -374,13 +387,13 @@ ipcMain.handle('submit-upload', async (_e, { name, soundPath, imagePath, color, 
       throw new Error(`upload script failed: ${scriptError}`);
     }
     debugLog(`submit-upload — window was on: ${beforeUrl || '(blank)'} — status: ${status} finalUrl: ${finalUrl} fieldError: ${fieldError}`);
-    if (status === 401) throw new Error('sign in on myinstants.com first');
+    if (signedOut(status, finalUrl)) throw new Error('sign in on myinstants.com first');
     if (status !== 200) throw new Error(`myinstants.com returned ${status}`);
-    // Success redirects to the new sound's own page; staying on /en/new/ means the form was
-    // re-rendered with validation errors instead (Django's usual pattern for a rejected POST).
+    // Success redirects away from the form (to /en/uploaded/); staying on /en/new/ means the form
+    // was re-rendered with validation errors instead (Django's usual pattern for a rejected POST).
     if (finalUrl.includes('/en/new/')) throw new Error(fieldError || 'myinstants.com rejected the submission — check the required fields');
     clearPageCache();
-    return { page: finalUrl.replace(BASE, '') };
+    return true;
   });
 });
 
@@ -441,10 +454,12 @@ function layoutSiteView() {
   siteView.setBounds({ x: 0, y: HEADER_HEIGHT, width: w, height: h - HEADER_HEIGHT });
 }
 ipcMain.handle('show-site-page', (_e, p) => {
+  // Same partition as the signed-in session, so only plain site paths (/en/..., /accounts/...).
+  if (typeof p !== 'string' || !/^\/(?:en|accounts)\/[\w\/.-]*$/.test(p)) throw new Error('bad page');
   const view = getSiteView();
   mainWin.setBrowserView(view);
   view.setBounds({ x: 0, y: HEADER_HEIGHT, width: 0, height: 0 }); // 0x0 until dom-ready hides the real header
-  view.webContents.loadURL(BASE + p);
+  load(view.webContents, BASE + p);
 });
 ipcMain.handle('hide-site-page', () => {
   if (mainWin) mainWin.setBrowserView(null);
@@ -459,6 +474,8 @@ app.whenReady().then(() => {
   });
   mainWin = win;
   win.on('resize', layoutSiteView);
+  // The hidden scraping window would otherwise keep the app alive with no window to show.
+  win.on('closed', () => app.quit());
   win.loadFile('index.html');
 });
 

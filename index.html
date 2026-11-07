@@ -8,7 +8,6 @@
   /* Values measured from the live myinstants.com (dark theme). */
   :root {
     --bg: #15202b; --nav: #1e2732; --text: #eee; --muted: #9e9e9e;
-    --site: https://www.myinstants.com;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   }
   * { box-sizing: border-box; }
@@ -410,7 +409,7 @@
       if (!soundInput.files[0]) { toast('Choose a sound file'); return; }
       submitBtn.disabled = true; submitBtn.textContent = 'Creating…';
       try {
-        const result = await window.api.submitUpload({
+        await window.api.submitUpload({
           name: nameInput.value,
           soundPath: window.api.getPathForFile(soundInput.files[0]),
           imagePath: imageInput.files[0] ? window.api.getPathForFile(imageInput.files[0]) : null,
@@ -507,19 +506,22 @@
 
   async function openProfile(s) {
     if (!s.page) return;
+    const at = seq; // drop the result if the user went somewhere else meanwhile
     $('note').textContent = 'Opening profile…';
     try {
       const name = await window.api.profile(s.page);
+      if (at !== seq) return;
       if (!name) { $('note').textContent = 'This sound has no public profile.'; return; }
       // /en/profile/<name>/ alone is the user's *favorites* tab on myinstants.com — the sounds they
       // uploaded live under /uploaded/. Right-clicking a sound to see more from its uploader should
       // land on their uploads, not an often-empty favorites list.
       show({ key: 'profile', title: `${name} — Uploaded`, path: `/en/profile/${encodeURIComponent(name)}/uploaded/`, empty: 'This profile has no uploaded sounds.' });
-    } catch { showError("Couldn't open that profile.", s.page); }
+    } catch { if (at === seq) showError("Couldn't open that profile.", s.page); }
   }
 
   // A single sound's own page: big button, favourite/view counts, uploader (-> their profile), related sounds.
   async function openSound(s) {
+    hideSitePage();
     const mine = ++seq;
     view = { key: 'sound:' + s.page }; setActive(view.key);
     $('title').textContent = s.name; $('grid').replaceChildren(); $('pager').replaceChildren(); $('scroll').scrollTop = 0;
