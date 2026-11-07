@@ -122,9 +122,12 @@ The app doesn't bypass or automate the bot check, and it doesn't pretend to be a
 
 ## 🛠️ Build from source
 
+Needs **Node.js 18–25** (Node 22 LTS recommended). On Node 26 the packager stops silently while unpacking Electron and no app is written.
+
 ```bash
 git clone https://github.com/yanivbahalul/Myinstants-MacOS.git
 cd Myinstants-MacOS
+npm install-scripts approve electron ffmpeg-static   # newer npm only: lets them download their binaries
 npm install          # Electron, the packager and a static ffmpeg build
 npm start            # run in development
 npm run build        # → MyInstants-darwin-arm64/MyInstants.app

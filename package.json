@@ -5,6 +5,9 @@
   "description": "Unofficial native macOS client for myinstants.com: browse, play, favorite, upload and delete instant sound buttons.",
   "main": "main.js",
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18 <26"
+  },
   "scripts": {
     "ffmpeg": "mkdir -p bin && cp node_modules/ffmpeg-static/ffmpeg node_modules/ffmpeg-static/ffmpeg.LICENSE bin/",
     "prestart": "npm run ffmpeg",
