@@ -13,7 +13,7 @@
     "prestart": "npm run ffmpeg",
     "start": "electron .",
     "prebuild": "npm run ffmpeg",
-    "build": "electron-packager . MyInstants --platform=darwin --arch=arm64 --overwrite --prune --ignore=^/docs --ignore=README.md",
+    "build": "electron-packager . MyInstants --platform=darwin --arch=arm64 --overwrite --prune --icon=build/icon.icns --ignore=^/docs --ignore=^/build --ignore=README.md",
     "zip": "codesign --force --deep --sign - MyInstants-darwin-arm64/MyInstants.app && ditto -c -k --keepParent MyInstants-darwin-arm64/MyInstants.app MyInstants-macOS-arm64.zip"
   },
   "devDependencies": {
