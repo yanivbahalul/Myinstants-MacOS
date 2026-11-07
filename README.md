@@ -10,7 +10,7 @@ Browse, play, favorite, upload and delete instant sound buttons — no browser t
 [![macOS](https://img.shields.io/badge/macOS-11%2B-000000?style=for-the-badge&logo=apple&logoColor=white)](#-installation)
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-555555?style=for-the-badge&logo=apple&logoColor=white)](#-installation)
 [![Electron](https://img.shields.io/badge/Electron-33-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Version](https://img.shields.io/badge/version-2.0.0-e63946?style=for-the-badge)](../../releases/latest)
+[![Version](https://img.shields.io/badge/version-2.0.1-e63946?style=for-the-badge)](../../releases/latest)
 
 [**⬇️ Download**](../../releases/latest) · [Features](#-features) · [Install](#-installation) · [How it works](#-how-it-works) · [FAQ](#-faq--troubleshooting)
 
