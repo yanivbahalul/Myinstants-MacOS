@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🔴 MyInstants for macOS
+<img src="docs/logo.png" alt="MyInstants logo: a glossy red instant button" width="160">
+
+# MyInstants for macOS
 
 **The entire [myinstants.com](https://www.myinstants.com) soundboard as a fast, ad‑free desktop app.**
 Browse, play, favorite, upload and delete instant sound buttons — no browser tab, no ads, no pop‑ups.
