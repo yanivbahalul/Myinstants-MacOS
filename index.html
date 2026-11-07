@@ -58,7 +58,11 @@
   #grid { display: flex; flex-wrap: wrap; justify-content: center; max-width: 960px; margin: 0 auto; }
 
   /* One sound, built the way the site builds it: coloured disc, glossy sprite on top, drop shadow. */
-  .tile { position: relative; vertical-align: top; width: 94px; margin: 0 4px 26px; text-align: center; overflow-wrap: break-word; }
+  .tile { position: relative; vertical-align: top; width: 94px; margin: 0 4px 26px; text-align: center; overflow-wrap: break-word;
+    animation: tile-in .28s ease-out both; animation-delay: calc(min(var(--i, 0), 24) * 12ms); }
+  .detail { animation: tile-in .28s ease-out both; }
+  @keyframes tile-in { from { opacity: 0; transform: translateY(6px); } }
+  @media (prefers-reduced-motion: reduce) { .tile, .detail { animation: none; } }
   .bg { width: 86px; height: 84px; margin: 3px 0 0 3px; position: absolute; border-radius: 50%; background-color: var(--c, #ff0000); }
   .btn {
     width: 94px; height: 89px; position: absolute; left: 0; top: 0; border: 0; padding: 0; cursor: pointer;
@@ -210,6 +214,18 @@
 
   const el = (tag, cls) => Object.assign(document.createElement(tag), { className: cls || '' });
   const icon = (name) => Object.assign(el('img'), { src: `${SITE}/media/images/icons/${name}.svg`, alt: '' });
+
+  // Every tile draws from the same handful of site images. Fetch them once up front and hold the
+  // first render until they're decoded, so tiles appear whole instead of the orb first and its
+  // icons trickling in. Capped at 3s so a slow image never blocks the list.
+  const tileImagesReady = Promise.race([
+    Promise.all([
+      '/media/images/transparent_button_small_sprite.png', '/media/images/transparent_button_small_shadow.png',
+      '/media/images/xtransparent_button_sprite.png.pagespeed.ic.15KLBY15iy.webp', '/media/images/transparent_button_shadow.png',
+      ...['heart', 'link', 'share-round'].map((n) => `/media/images/icons/${n}.svg`),
+    ].map((p) => Object.assign(new Image(), { src: SITE + p }).decode().catch(() => {}))),
+    new Promise((r) => setTimeout(r, 3000)),
+  ]);
 
   function toast(msg) {
     $('toast').textContent = msg; $('toast').classList.add('show');
@@ -446,10 +462,13 @@
       }
       return;
     }
+    await tileImagesReady;
     if (mine !== seq) return;
     $('note').textContent = result.sounds.length || append ? '' : (view.empty || 'No sounds here.');
     // The site warns a deletion can take a while to leave its cache; never show one we deleted.
-    $('grid').append(...result.sounds.filter((s) => !deleted.has(s.id)).map(tileFor));
+    const tiles = result.sounds.filter((s) => !deleted.has(s.id)).map(tileFor);
+    tiles.forEach((t, i) => t.style.setProperty('--i', i)); // stagger the fade-in
+    $('grid').append(...tiles);
     $('more').hidden = !result.hasMore;
   }
 
@@ -475,6 +494,7 @@
     let d;
     try { d = await window.api.instant(s.page); }
     catch (e) { if (mine === seq) showError(`Couldn't reach myinstants.com (${e.message.replace(/^.*Error: /, '')}).`, s.page); return; }
+    await tileImagesReady;
     if (mine !== seq) return;
     if (!d) { showError("Couldn't load that sound.", s.page); return; }
     $('note').textContent = '';
