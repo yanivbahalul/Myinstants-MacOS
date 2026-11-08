@@ -121,11 +121,9 @@ struct Category: Identifiable, Hashable {
 
 /// JavaScript's encodeURIComponent, so paths match what the desktop app builds.
 func uriEncode(_ s: String) -> String {
-    var allowed = CharacterSet.alphanumerics
-    allowed.insert(charactersIn: "-_.!~*'()")
-    // alphanumerics includes non-ASCII letters; restrict to ASCII so Hebrew etc. get encoded.
-    let ascii = CharacterSet(charactersIn: Unicode.Scalar(0x21)!...Unicode.Scalar(0x7E)!)
-    return s.addingPercentEncoding(withAllowedCharacters: allowed.intersection(ascii)) ?? s
+    // Spelled out rather than CharacterSet.alphanumerics, which also lets Hebrew etc. through unencoded.
+    let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.!~*'()")
+    return s.addingPercentEncoding(withAllowedCharacters: allowed) ?? s
 }
 
 extension Color {
