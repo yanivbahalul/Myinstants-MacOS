@@ -61,6 +61,45 @@ final class ButtonArt: ObservableObject {
         }
     }
 
+    // MARK: Finished buttons
+
+    private let rendered = NSCache<NSString, UIImage>()
+
+    /// One finished button (shadow, colored disc, glossy sprite) flattened into a single bitmap at
+    /// the screen's resolution, cached per color. One image per tile instead of three stacked
+    /// layers keeps scrolling smooth and free of edge artifacts.
+    ///
+    /// The site's images are 1x, which an iPhone screen blows up 3x into a smear. So small buttons
+    /// are drawn from the large (200px) button scaled *down* — about twice the detail — and only
+    /// fall back to the small sprite if the large one couldn't be downloaded.
+    func button(small isSmall: Bool, color: UIColor, pressed: Bool) -> UIImage? {
+        let target = isSmall ? Self.smallLayout : Self.largeLayout
+        guard let source = large ?? (isSmall ? small : nil) else { return nil }
+
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let key = String(format: "%ld-%ld-%.3f-%.3f-%.3f-%.3f", isSmall ? 1 : 0, pressed ? 1 : 0, r, g, b, a) as NSString
+        if let hit = rendered.object(forKey: key) { return hit }
+
+        let size = CGSize(width: target.width, height: target.height)
+        let sx = size.width / source.layout.width, sy = size.height / source.layout.height
+        let d = source.layout.disc
+        let disc = CGRect(x: d.minX * sx, y: d.minY * sy, width: d.width * sx, height: d.height * sy)
+
+        let format = UIGraphicsImageRendererFormat.preferred()
+        format.opaque = false
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            ctx.cgContext.interpolationQuality = .high
+            let full = CGRect(origin: .zero, size: size)
+            source.shadow.draw(in: full)
+            color.setFill()
+            UIBezierPath(ovalIn: disc).fill()
+            (pressed ? source.pressed : source.normal).draw(in: full)
+        }
+        rendered.setObject(image, forKey: key)
+        return image
+    }
+
     private static func sprite(sheet: UIImage, shadow: UIImage, layout: Layout) -> Sprite? {
         guard let normal = crop(sheet, layout.normalFrame), let pressed = crop(sheet, layout.pressedFrame) else {
             return nil

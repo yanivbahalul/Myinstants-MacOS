@@ -38,7 +38,12 @@ struct PlayerBar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(.bar)
+        // Solid, not a blur material: sound buttons scrolling under a blur showed as colored smears.
+        .background(
+            Theme.card
+                .overlay(alignment: .top) { Divider() }
+                .ignoresSafeArea(edges: .bottom)
+        )
         .animation(.easeInOut(duration: 0.2), value: client.banner)
         .animation(.easeInOut(duration: 0.2), value: client.reachable)
     }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// A myinstants button in the site's own look (same images and layout as the desktop app), with a
 /// drawn fallback until those images have been downloaded.
@@ -13,9 +14,9 @@ struct OrbButton: View {
 
     var body: some View {
         Group {
-            if let sprite = (kind == .small ? art.small : art.large) {
+            if art.large != nil || (kind == .small && art.small != nil) {
                 Button(action: action) { EmptyView() }
-                    .buttonStyle(SpriteStyle(color: color, sprite: sprite))
+                    .buttonStyle(SpriteStyle(color: UIColor(color), small: kind == .small, art: art))
                     .transition(.opacity)
             } else {
                 // Same footprint as the real button, so nothing jumps when the images arrive.
@@ -25,34 +26,29 @@ struct OrbButton: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: kind == .small ? art.small != nil : art.large != nil)
+        .animation(.easeInOut(duration: 0.25), value: art.large != nil || (kind == .small && art.small != nil))
         .accessibilityLabel(label.isEmpty ? "Play" : "Play \(label)")
     }
 }
 
-/// Exactly how index.html stacks a button: the shadow image, then the colored disc, then the glossy
-/// transparent sprite on top, which switches to its "pressed" frame while held.
+/// The site's button, pre-rendered by ButtonArt (shadow + colored disc + glossy sprite, exactly
+/// as index.html stacks them), switching to the sprite's own "pressed" frame while held.
 private struct SpriteStyle: ButtonStyle {
-    let color: Color
-    let sprite: ButtonArt.Sprite
+    let color: UIColor
+    let small: Bool
+    let art: ButtonArt
 
     func makeBody(configuration: Configuration) -> some View {
-        let s = sprite.layout
-        return ZStack(alignment: .topLeading) {
-            Image(uiImage: sprite.shadow)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: s.width, height: s.height)
-            Ellipse()
-                .fill(color)
-                .frame(width: s.disc.width, height: s.disc.height)
-                .offset(x: s.disc.minX, y: s.disc.minY)
-            Image(uiImage: configuration.isPressed ? sprite.pressed : sprite.normal)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: s.width, height: s.height)
+        let layout = small ? ButtonArt.smallLayout : ButtonArt.largeLayout
+        return Group {
+            if let image = art.button(small: small, color: color, pressed: configuration.isPressed) {
+                Image(uiImage: image)
+                    .resizable()
+                    .frame(width: layout.width, height: layout.height)
+            } else {
+                Color.clear.frame(width: layout.width, height: layout.height)
+            }
         }
-        .frame(width: s.width, height: s.height, alignment: .topLeading)
         .contentShape(Rectangle())
     }
 }
