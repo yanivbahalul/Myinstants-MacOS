@@ -56,6 +56,10 @@
 
   /* Side panels are striped like the site's ad rails; the content column sits between them. */
   #scroll { flex: 1; overflow-y: auto; background: var(--bg) url(https://www.myinstants.com/media/images/ad-background.png); }
+  /* No visible scroll bar (macOS shows a light one permanently when a mouse is connected); the
+     list still scrolls with the wheel/trackpad. */
+  #scroll { scrollbar-width: none; }
+  #scroll::-webkit-scrollbar { display: none; }
   .col { max-width: 1170px; min-height: 100%; margin: 0 auto; padding: 28px 20px 40px; background: var(--bg); }
   .crumb { text-align: center; font-size: 14px; margin-bottom: 30px; }
   .crumb button { font: inherit; color: var(--text); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
