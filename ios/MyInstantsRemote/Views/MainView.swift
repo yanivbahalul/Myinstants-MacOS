@@ -50,6 +50,8 @@ extension View {
     func screenChrome() -> some View {
         background(Theme.background.ignoresSafeArea())
             .safeAreaInset(edge: .bottom, spacing: 0) { PlayerBar() }
+            .toolbarBackground(Theme.card, for: .navigationBar, .tabBar)
+            .toolbarBackground(.visible, for: .navigationBar, .tabBar)
     }
 }
 

@@ -16,11 +16,16 @@ struct OrbButton: View {
             if let sprite = (kind == .small ? art.small : art.large) {
                 Button(action: action) { EmptyView() }
                     .buttonStyle(SpriteStyle(color: color, sprite: sprite))
+                    .transition(.opacity)
             } else {
+                // Same footprint as the real button, so nothing jumps when the images arrive.
+                let layout = kind == .small ? ButtonArt.smallLayout : ButtonArt.largeLayout
                 Button(action: action) { EmptyView() }
-                    .buttonStyle(DrawnStyle(color: color, size: kind == .small ? 84 : 180))
+                    .buttonStyle(DrawnStyle(color: color, layout: layout))
+                    .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: kind == .small ? art.small != nil : art.large != nil)
         .accessibilityLabel(label.isEmpty ? "Play" : "Play \(label)")
     }
 }
@@ -52,32 +57,28 @@ private struct SpriteStyle: ButtonStyle {
     }
 }
 
+/// Stand-in until the site's images are downloaded: the same colored disc in the same spot, with a
+/// soft gloss and no dark rim (that rim was the black edge that flashed before the real art loaded).
 private struct DrawnStyle: ButtonStyle {
     let color: Color
-    let size: CGFloat
+    let layout: ButtonArt.Layout
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
-        return ZStack {
-            Circle()
-                .fill(Color.black.opacity(0.55))
-            Circle()
-                .fill(color)
-                .padding(size * 0.06)
-            Circle()
-                .fill(LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .center, endPoint: .bottom))
-                .padding(size * 0.06)
+        let disc = layout.disc
+        return ZStack(alignment: .topLeading) {
             Ellipse()
-                .fill(LinearGradient(colors: [.white.opacity(pressed ? 0.35 : 0.7), .white.opacity(0.03)],
-                                     startPoint: .top, endPoint: .bottom))
-                .frame(width: size * 0.62, height: size * 0.38)
-                .offset(y: -size * 0.2)
+                .fill(color)
+                .overlay(
+                    Ellipse().fill(LinearGradient(colors: [.white.opacity(pressed ? 0.15 : 0.35), .clear, .black.opacity(0.2)],
+                                                  startPoint: .top, endPoint: .bottom))
+                )
+                .frame(width: disc.width, height: disc.height)
+                .shadow(color: .black.opacity(0.35), radius: pressed ? 1 : 3, y: pressed ? 1 : 3)
+                .offset(x: disc.minX, y: disc.minY + (pressed ? 2 : 0))
         }
-        .frame(width: size, height: size)
-        .brightness(pressed ? -0.1 : 0)
-        .scaleEffect(pressed ? 0.92 : 1)
-        .shadow(color: .black.opacity(0.55), radius: pressed ? 2 : 6, y: pressed ? 1 : 5)
-        .contentShape(Circle())
+        .frame(width: layout.width, height: layout.height, alignment: .topLeading)
+        .contentShape(Rectangle())
     }
 }
 

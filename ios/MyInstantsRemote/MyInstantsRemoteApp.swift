@@ -16,6 +16,7 @@ struct MyInstantsRemoteApp: App {
 
 struct RootView: View {
     @EnvironmentObject private var client: RemoteClient
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -34,7 +35,12 @@ struct RootView: View {
                 ConnectView()
             }
         }
+        .background(Theme.background.ignoresSafeArea())
         .task { await client.restore() }
         .task { await ButtonArt.shared.load() }
+        .onChange(of: scenePhase) { phase in
+            // Back from the background: make sure the Mac is still there straight away.
+            if phase == .active { Task { await client.checkHealth() } }
+        }
     }
 }

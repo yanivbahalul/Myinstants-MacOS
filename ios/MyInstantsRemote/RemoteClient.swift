@@ -38,12 +38,15 @@ final class RemoteClient: ObservableObject {
     @Published private(set) var volume: Double = 1
     @Published private(set) var nowPlaying: String?
     @Published var connectError: String?
+    /// False while the paired Mac isn't answering (the health check keeps trying).
+    @Published private(set) var reachable = true
     @Published var banner: String?
 
     private static let storeKey = "pairedMac"
     private let session: URLSession
     private var volumeTask: Task<Void, Never>?
     private var bannerTask: Task<Void, Never>?
+    private var heartbeat: Task<Void, Never>?
     private let haptics = UIImpactFeedbackGenerator(style: .medium)
 
     init() {
@@ -98,6 +101,7 @@ final class RemoteClient: ObservableObject {
     }
 
     func disconnect() {
+        stopHealthChecks()
         state = .disconnected
         nowPlaying = nil
         mac = nil
@@ -107,6 +111,7 @@ final class RemoteClient: ObservableObject {
     var savedPin: String { mac?.pin ?? "" }
 
     private func fail(_ message: String) {
+        stopHealthChecks()
         state = .disconnected
         connectError = message
     }
@@ -114,13 +119,81 @@ final class RemoteClient: ObservableObject {
     private func handshake(_ candidate: Mac) async throws {
         let hello: Hello = try await request(candidate, "GET", "/api/hello", timeout: 6)
         mac = Mac(name: hello.name, host: candidate.host, port: candidate.port, pin: candidate.pin)
-        if let data = try? JSONEncoder().encode(mac) {
-            UserDefaults.standard.set(data, forKey: Self.storeKey)
-        }
+        saveMac()
         loggedIn = hello.loggedIn
         if let v = hello.volume { volume = v }
         connectError = nil
+        reachable = true
         state = .connected
+        startHealthChecks()
+    }
+
+    private func saveMac() {
+        if let mac, let data = try? JSONEncoder().encode(mac) {
+            UserDefaults.standard.set(data, forKey: Self.storeKey)
+        }
+    }
+
+    // MARK: Health check
+
+    /// While connected, checks every few seconds that the Mac still answers. If it doesn't, finds it
+    /// again over Bonjour (new IP or port after a restart) and carries on without re-pairing.
+    private func startHealthChecks() {
+        heartbeat?.cancel()
+        heartbeat = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                guard !Task.isCancelled else { return }
+                await self?.checkHealth()
+            }
+        }
+    }
+
+    private func stopHealthChecks() {
+        heartbeat?.cancel()
+        heartbeat = nil
+    }
+
+    /// Also called when the app comes back to the foreground.
+    func checkHealth() async {
+        guard state == .connected, let current = mac else { return }
+        do {
+            let hello: Hello = try await request(current, "GET", "/api/hello", timeout: 4)
+            loggedIn = hello.loggedIn
+            setReachable(true)
+        } catch RemoteError.badPin {
+            fail("The PIN changed on \(current.name). Enter the new one.")
+        } catch {
+            setReachable(await relocate())
+        }
+    }
+
+    private func setReachable(_ ok: Bool) {
+        guard ok != reachable else { return }
+        reachable = ok
+        if ok { showBanner("Reconnected to \(mac?.name ?? "the Mac")") }
+    }
+
+    /// Looks the paired Mac up again by its Bonjour name. True if it was found and answers.
+    private func relocate() async -> Bool {
+        guard let current = mac, let found = await MacBrowser.find(named: current.name, timeout: 3) else {
+            return false
+        }
+        var moved = current
+        moved.host = found.host
+        moved.port = found.port
+        guard let hello: Hello = try? await request(moved, "GET", "/api/hello", timeout: 4) else { return false }
+        guard state == .connected else { return false }
+        mac = moved
+        saveMac()
+        loggedIn = hello.loggedIn
+        return true
+    }
+
+    private static func isUnreachable(_ error: Error) -> Bool {
+        guard let error = error as? URLError else { return false }
+        return [.cannotConnectToHost, .cannotFindHost, .timedOut, .networkConnectionLost, .notConnectedToInternet]
+            .contains(error.code)
     }
 
     /// Re-reads whether the Mac is signed in to myinstants.com (it may have just signed in there).
@@ -184,7 +257,13 @@ final class RemoteClient: ObservableObject {
         }
     }
 
-    func show(_ error: Error) { showBanner(error.localizedDescription) }
+    func show(_ error: Error) {
+        if Self.isUnreachable(error) {
+            showBanner("Can't reach \(mac?.name ?? "the Mac"). Is MyInstants open there?")
+        } else {
+            showBanner(error.localizedDescription)
+        }
+    }
 
     func showBanner(_ message: String) {
         banner = message
@@ -200,8 +279,18 @@ final class RemoteClient: ObservableObject {
 
     private func call<T: Decodable>(_ method: String, _ path: String, query: [String: String] = [:],
                                     body: [String: Any]? = nil, timeout: TimeInterval = 90) async throws -> T {
-        guard let mac, state == .connected else { throw RemoteError.notConnected }
-        return try await request(mac, method, path, query: query, body: body, timeout: timeout)
+        guard let current = mac, state == .connected else { throw RemoteError.notConnected }
+        do {
+            return try await request(current, method, path, query: query, body: body, timeout: timeout)
+        } catch let error where Self.isUnreachable(error) {
+            // The Mac may have a new address; find it again and retry once.
+            guard await relocate(), let moved = mac else {
+                setReachable(false)
+                throw error
+            }
+            setReachable(true)
+            return try await request(moved, method, path, query: query, body: body, timeout: timeout)
+        }
     }
 
     private func request<T: Decodable>(_ mac: Mac, _ method: String, _ path: String,

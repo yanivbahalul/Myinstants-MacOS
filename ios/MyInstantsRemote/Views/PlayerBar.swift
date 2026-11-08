@@ -14,12 +14,12 @@ struct PlayerBar: View {
                     .transition(.opacity)
             }
             HStack(spacing: 12) {
-                Image(systemName: client.nowPlaying == nil ? "desktopcomputer" : "speaker.wave.2.fill")
-                    .foregroundStyle(client.nowPlaying == nil ? Color.secondary : Theme.accent)
+                statusIcon
                     .frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(client.nowPlaying ?? (client.mac?.name ?? "Mac"))
+                    Text(statusText)
                         .font(.footnote.weight(.semibold))
+                        .foregroundStyle(client.reachable ? Color.primary : Color.orange)
                         .lineLimit(1)
                     Slider(value: Binding(get: { client.volume }, set: { client.setVolume($0) }), in: 0...1)
                         .accessibilityLabel("Volume on the Mac")
@@ -40,5 +40,21 @@ struct PlayerBar: View {
         .padding(.vertical, 8)
         .background(.bar)
         .animation(.easeInOut(duration: 0.2), value: client.banner)
+        .animation(.easeInOut(duration: 0.2), value: client.reachable)
+    }
+
+    private var statusText: String {
+        if !client.reachable { return "\(client.mac?.name ?? "Mac") isn't answering — retrying…" }
+        return client.nowPlaying ?? (client.mac?.name ?? "Mac")
+    }
+
+    @ViewBuilder private var statusIcon: some View {
+        if !client.reachable {
+            Image(systemName: "wifi.exclamationmark").foregroundStyle(.orange)
+        } else if client.nowPlaying != nil {
+            Image(systemName: "speaker.wave.2.fill").foregroundStyle(Theme.accent)
+        } else {
+            Image(systemName: "desktopcomputer").foregroundStyle(.secondary)
+        }
     }
 }
