@@ -1,37 +1,72 @@
 import SwiftUI
 
-/// The glossy round myinstants button, drawn natively so it looks sharp at any size.
+/// A myinstants button in the site's own look (same images and layout as the desktop app), with a
+/// drawn fallback until those images have been downloaded.
 struct OrbButton: View {
+    enum Kind { case small, large }
+
     let color: Color
-    var size: CGFloat = 78
+    var kind: Kind = .small
     var label: String = ""
     let action: () -> Void
+    @ObservedObject private var art = ButtonArt.shared
 
     var body: some View {
-        Button(action: action) { EmptyView() }
-            .buttonStyle(OrbStyle(color: color, size: size))
-            .accessibilityLabel(label.isEmpty ? "Play" : "Play \(label)")
+        Group {
+            if let sprite = (kind == .small ? art.small : art.large) {
+                Button(action: action) { EmptyView() }
+                    .buttonStyle(SpriteStyle(color: color, sprite: sprite))
+            } else {
+                Button(action: action) { EmptyView() }
+                    .buttonStyle(DrawnStyle(color: color, size: kind == .small ? 84 : 180))
+            }
+        }
+        .accessibilityLabel(label.isEmpty ? "Play" : "Play \(label)")
     }
 }
 
-private struct OrbStyle: ButtonStyle {
+/// Exactly how index.html stacks a button: the shadow image, then the colored disc, then the glossy
+/// transparent sprite on top, which switches to its "pressed" frame while held.
+private struct SpriteStyle: ButtonStyle {
+    let color: Color
+    let sprite: ButtonArt.Sprite
+
+    func makeBody(configuration: Configuration) -> some View {
+        let s = sprite.layout
+        return ZStack(alignment: .topLeading) {
+            Image(uiImage: sprite.shadow)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: s.width, height: s.height)
+            Ellipse()
+                .fill(color)
+                .frame(width: s.disc.width, height: s.disc.height)
+                .offset(x: s.disc.minX, y: s.disc.minY)
+            Image(uiImage: configuration.isPressed ? sprite.pressed : sprite.normal)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: s.width, height: s.height)
+        }
+        .frame(width: s.width, height: s.height, alignment: .topLeading)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct DrawnStyle: ButtonStyle {
     let color: Color
     let size: CGFloat
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
         return ZStack {
-            // dark rim / base
             Circle()
                 .fill(Color.black.opacity(0.55))
             Circle()
                 .fill(color)
                 .padding(size * 0.06)
-            // shading toward the bottom
             Circle()
                 .fill(LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .center, endPoint: .bottom))
                 .padding(size * 0.06)
-            // glossy highlight
             Ellipse()
                 .fill(LinearGradient(colors: [.white.opacity(pressed ? 0.35 : 0.7), .white.opacity(0.03)],
                                      startPoint: .top, endPoint: .bottom))
@@ -42,7 +77,6 @@ private struct OrbStyle: ButtonStyle {
         .brightness(pressed ? -0.1 : 0)
         .scaleEffect(pressed ? 0.92 : 1)
         .shadow(color: .black.opacity(0.55), radius: pressed ? 2 : 6, y: pressed ? 1 : 5)
-        .animation(.easeOut(duration: 0.08), value: pressed)
         .contentShape(Circle())
     }
 }
@@ -119,7 +153,7 @@ struct SoundGrid: View {
     var isFavorites = false
     var onUnfavorited: ((Sound) -> Void)? = nil
 
-    private let columns = [GridItem(.adaptive(minimum: 96, maximum: 130), spacing: 8)]
+    private let columns = [GridItem(.adaptive(minimum: 98, maximum: 130), spacing: 6)]
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 18) {

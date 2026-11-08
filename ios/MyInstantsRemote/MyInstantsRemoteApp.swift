@@ -35,5 +35,6 @@ struct RootView: View {
             }
         }
         .task { await client.restore() }
+        .task { await ButtonArt.shared.load() }
     }
 }

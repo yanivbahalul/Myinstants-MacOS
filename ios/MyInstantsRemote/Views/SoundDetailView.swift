@@ -15,7 +15,7 @@ struct SoundDetailView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
 
-                OrbButton(color: Color(hex: detail?.color ?? sound.color), size: 180, label: sound.name) {
+                OrbButton(color: Color(hex: detail?.color ?? sound.color), kind: .large, label: sound.name) {
                     client.play(detail?.url ?? sound.url, name: detail?.name ?? sound.name)
                 }
                 .padding(.vertical, 6)
