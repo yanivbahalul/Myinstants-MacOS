@@ -1,4 +1,4 @@
-const { app, BrowserWindow, BrowserView, ipcMain, shell, session } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, shell, session, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { parseSounds, parseProfile, parseInstant, parsePager } = require('./parse');
@@ -488,24 +488,79 @@ const remote = createRemote({
   },
 });
 ipcMain.handle('remote-info', () => remote.info());
-ipcMain.handle('remote-enable', (_e, on) => remote.setEnabled(!!on));
-ipcMain.handle('remote-new-pin', () => remote.newPin());
+ipcMain.handle('remote-enable', async (_e, on) => { const info = await remote.setEnabled(!!on); updateTray(); return info; });
+ipcMain.handle('remote-new-pin', () => { const info = remote.newPin(); updateTray(); return info; });
 ipcMain.on('volume-changed', (_e, v) => remote.setVolume(v));
 app.on('will-quit', () => remote.shutdown());
 
+// Runs in the background: closing the window only hides it, so the iPhone remote keeps working.
+// A menu-bar icon shows the remote's state and PIN and is where the app is really quit from
+// (or ⌘Q / Dock → Quit). The window comes back from the menu bar or by clicking the Dock icon.
+let tray = null;
+let quitting = false;
+app.on('before-quit', () => { quitting = true; });
+
+function showMainWindow() {
+  if (!mainWin || mainWin.isDestroyed()) return;
+  mainWin.show();
+  mainWin.focus();
+}
+
+const openAtLogin = () => process.platform === 'darwin' && app.getLoginItemSettings().openAtLogin;
+
+function updateTray() {
+  if (!tray) return;
+  const info = remote.info();
+  const status = !info.enabled ? 'iPhone remote: off'
+    : info.running ? `iPhone remote: on · PIN ${info.pin}`
+    : 'iPhone remote: not running';
+  tray.setToolTip(`MyInstants — ${status}`);
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: status, enabled: false },
+    ...(info.running && info.addresses.length ? [{ label: `Address: ${info.addresses[0]}:${info.port}`, enabled: false }] : []),
+    { type: 'separator' },
+    { label: 'Show MyInstants', click: showMainWindow },
+    { label: 'Stop all sounds', click: () => { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('remote', { action: 'stop' }); } },
+    { type: 'separator' },
+    { label: 'Allow iPhone remote', type: 'checkbox', checked: info.enabled,
+      click: async (item) => { await remote.setEnabled(item.checked); updateTray(); } },
+    // Only takes effect for the built app in /Applications, not for `npm start`.
+    { label: 'Open at login', type: 'checkbox', checked: openAtLogin(), enabled: app.isPackaged,
+      click: (item) => { app.setLoginItemSettings({ openAtLogin: item.checked }); updateTray(); } },
+    { type: 'separator' },
+    { label: 'Quit MyInstants', accelerator: 'CommandOrControl+Q', click: () => app.quit() },
+  ]));
+}
+
 app.whenReady().then(() => {
+  // Opened at login: start quietly in the menu bar instead of popping the window up.
+  const startHidden = process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAtLogin;
   const win = new BrowserWindow({
     width: 1100, height: 760, minWidth: 920, minHeight: 400,
     backgroundColor: '#15202b',
     titleBarStyle: 'hiddenInset',
-    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+    show: !startHidden,
+    // Keeps playback and remote commands at full speed while the window is hidden.
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), backgroundThrottling: false },
   });
   mainWin = win;
   win.on('resize', layoutSiteView);
-  // The hidden scraping window would otherwise keep the app alive with no window to show.
-  win.on('closed', () => app.quit());
+  win.on('close', (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    win.hide();
+  });
   win.loadFile('index.html');
   remote.start();
+
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'trayTemplate.png'));
+  icon.setTemplateImage(true);
+  tray = new Tray(icon);
+  updateTray();
+  setTimeout(updateTray, 500); // the server's port is known once it's listening
 });
 
+app.on('activate', showMainWindow); // Dock icon clicked while the window is hidden
+
+// The hidden scraping window keeps one window alive, so this only runs on a real quit.
 app.on('window-all-closed', () => app.quit());
