@@ -15,4 +15,10 @@ contextBridge.exposeInMainWorld('api', {
   // reasons — webUtils.getPathForFile is Electron's own sanctioned way to recover it when the main
   // process genuinely needs to read that exact file (here: to attach it to the real upload POST).
   getPathForFile: (file) => webUtils.getPathForFile(file),
+  // iPhone remote (remote.js): settings for the 📱 menu, and the commands the phone sends.
+  remoteInfo: () => ipcRenderer.invoke('remote-info'),
+  remoteEnable: (on) => ipcRenderer.invoke('remote-enable', on),
+  remoteNewPin: () => ipcRenderer.invoke('remote-new-pin'),
+  onRemote: (cb) => ipcRenderer.on('remote', (_e, msg) => cb(msg)),
+  volumeChanged: (v) => ipcRenderer.send('volume-changed', v),
 });

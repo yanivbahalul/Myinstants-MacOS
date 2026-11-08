@@ -99,6 +99,37 @@ Then open it normally.
 | Upload | **Upload** in the top bar → fill the form → **Create**. You land on your Uploaded page. |
 | Delete one of your sounds | **Account → Uploaded** → red ✕ → confirm. |
 | Copy a link | 🔗 copies the sound's page, ↗️ copies the MP3 file link. |
+| Control it from your iPhone | 📱 in the top bar → **Allow iPhone remote** → pair the iPhone app with the PIN. See [iPhone remote](#-iphone-remote). |
+
+## 📱 iPhone remote
+
+A companion **SwiftUI iPhone app** (in [`ios/`](ios/)) lets you browse the same lists on your phone — Trending, Just added, categories, search, your favorites and uploads — and tap a button to **play it on the Mac**. Volume and **Stop all** on the phone control the Mac too.
+
+```mermaid
+flowchart LR
+    Phone["📱 iPhone app<br/>(SwiftUI)"] -- "Wi‑Fi · PIN in every request" --> Remote["📡 remote.js<br/>(local server, off by default)"]
+    Remote --> Main["⚙️ main.js<br/>(same page loading as the app)"]
+    Remote -- "play / stop / volume" --> UI["🖥️ App window<br/>plays the sound"]
+```
+
+1. **On the Mac:** click **📱** in the top bar and tick **Allow iPhone remote**. A 6‑digit PIN appears (macOS may ask once to allow incoming connections — allow it).
+2. **On the iPhone:** install the app (below), open it, pick your Mac from the list (found automatically over Bonjour) and type the PIN. Both need to be on the same Wi‑Fi.
+
+The phone app remembers the Mac and reconnects on its own, even if the Mac's IP address changes.
+
+**Runs in the background:** closing the window only hides it — the app leaves the Dock and stays in the **menu bar** (the button icon at the top of the screen) so the phone keeps working. Its Dock icon comes back when you open the window again. The menu-bar icon shows the remote's status and PIN, turns the remote on/off, and has **Open at login** and **Quit MyInstants**. *Show MyInstants* brings the window back.
+
+**Installing the iPhone app** (free, needs a Mac with **Xcode 16+**):
+
+1. Open `ios/MyInstantsRemote.xcodeproj` in Xcode.
+2. Select the **MyInstantsRemote** target → **Signing & Capabilities** → **Team** → pick your Apple ID (*Add an Account…* if needed; a free Apple ID works). If Xcode says the bundle identifier is taken, change it to something unique, e.g. `com.yourname.myinstants.remote`.
+3. Plug in the iPhone (or pair it over Wi‑Fi), choose it as the run destination and press **▶ Run**.
+4. First time only, on the iPhone: **Settings → General → VPN & Device Management** → trust your developer certificate. On iOS 16+ also turn on **Settings → Privacy & Security → Developer Mode**.
+5. When the app asks for **Local Network** access, allow it — that's how it finds the Mac.
+
+> With a free Apple ID, Apple lets a self‑installed app run for **7 days**; after that just press **▶ Run** in Xcode again (your pairing is kept). A paid Apple Developer account ($99/year) extends that to a year.
+
+**Security:** the server is off until you turn it on, only answers on your local network, requires the PIN on every request (10 wrong PINs lock it for 10 minutes), and can only play sounds from myinstants.com. **New PIN** in the 📱 menu unpairs every phone.
 
 ## 🔧 How it works
 
@@ -183,6 +214,7 @@ The release build is Apple Silicon only. Building from source with <code>--arch=
 ## 🔒 Privacy
 
 - The app only connects to **myinstants.com** (and Cloudflare's check when the site asks for it). No analytics, no telemetry, no third‑party servers.
+- The iPhone remote is **off by default**. When on, it listens on your local network only (port 47800) and needs the pairing PIN; the iPhone app talks only to your Mac.
 - Your session stays in the app's own data folder on your Mac.
 - `debug.log` in that folder records one status line per account action (never page contents) to help diagnose problems.
 

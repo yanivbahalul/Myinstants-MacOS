@@ -1,9 +1,10 @@
-const { app, BrowserWindow, BrowserView, ipcMain, shell, session } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, shell, session, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { parseSounds, parseProfile, parseInstant, parsePager } = require('./parse');
 const os = require('os');
 const { execFile } = require('child_process');
+const { createRemote } = require('./remote');
 
 // myinstants.com rejects sounds over 300KB and MP3s with embedded cover art ("File type is not
 // supported"). Stripping the tags is plain byte work done here, so a normal MP3 needs nothing
@@ -218,7 +219,9 @@ const withPage = (p, n) => (n > 1 ? p + (p.includes('?') ? '&' : '?') + 'page=' 
 // nothing found via search could ever be favorited. /en/search/?name=X turns out to render the exact
 // same tile markup (and real favorite(id) buttons) as every other list page, confirmed live, so
 // 'sounds' below already handles it — no separate endpoint needed.
-ipcMain.handle('sounds', async (_e, { path: p, page }) => {
+// Shared by the desktop window (IPC) and the iPhone remote (remote.js).
+async function listSounds(p, page) {
+  if (typeof p !== 'string') throw new Error('bad path');
   const tries = p === '/en/index/il/' ? [p, '/en/index/us/'] : [p];
   let html;
   for (const t of tries) {
@@ -227,19 +230,23 @@ ipcMain.handle('sounds', async (_e, { path: p, page }) => {
     if (sounds.length) return { sounds: sounds.map(toTile), pager: parsePager(html) };
   }
   return { sounds: [], pager: parsePager(html) };
-});
+}
+
+async function instantInfo(soundPage) {
+  if (!/^\/en\/instant\/[^/]/.test(soundPage)) throw new Error('bad path');
+  const s = parseInstant(await getHtml(soundPage));
+  if (!s) return null;
+  return { ...s, url: s.path && BASE + s.path, related: s.related.map(toTile) };
+}
+
+ipcMain.handle('sounds', (_e, { path: p, page }) => listSounds(p, page));
 
 ipcMain.handle('profile', async (_e, soundPage) => {
   if (!/^\/en\/instant\/[^/]/.test(soundPage)) throw new Error('bad path');
   return parseProfile(await getHtml(soundPage)) || null;
 });
 
-ipcMain.handle('instant', async (_e, soundPage) => {
-  if (!/^\/en\/instant\/[^/]/.test(soundPage)) throw new Error('bad path');
-  const s = parseInstant(await getHtml(soundPage));
-  if (!s) return null;
-  return { ...s, url: s.path && BASE + s.path, related: s.related.map(toTile) };
-});
+ipcMain.handle('instant', (_e, soundPage) => instantInfo(soundPage));
 
 // Adding and removing a favorite are two unrelated endpoints on the real site, not a symmetric
 // pair — confirmed straight from its own markup/JS, not guessed:
@@ -401,12 +408,13 @@ ipcMain.handle('submit-upload', async (_e, { name, soundPath, imagePath, color, 
 // that, so its presence is a good-enough signal without having to fetch and scrape a whole page for
 // it. The renderer checks this on launch and again every time it leaves the in-app Login/Settings/
 // Logout page, which is what makes the header "sync" after you sign in there.
-ipcMain.handle('auth-status', async () => {
+async function authStatus() {
   const cookies = await session.fromPartition('persist:myinstants-read').cookies.get({ name: 'sessionid' });
   const sid = cookies.length ? cookies[0].value : null;
   if (sid !== lastSessionId) { lastSessionId = sid; clearPageCache(); } // signed in/out or switched account
   return cookies.length > 0;
-});
+}
+ipcMain.handle('auth-status', authStatus);
 
 // Login, Upload, Settings and Logout all used to kick out to the system browser because sign-in
 // (Google/Facebook OAuth, the site's own CSRF check) was assumed not to survive Electron's embedded
@@ -465,18 +473,111 @@ ipcMain.handle('hide-site-page', () => {
   if (mainWin) mainWin.setBrowserView(null);
 });
 
+// The iPhone remote: a small server on the local network that the companion iOS app (ios/) browses
+// through and sends play commands to. Off until turned on from the 📱 menu; every request needs the
+// pairing PIN shown there. Sounds play here, in the main window, through the same player as a click.
+const remote = createRemote({
+  configPath: path.join(app.getPath('userData'), 'remote.json'),
+  version: app.getVersion(),
+  handlers: {
+    sounds: listSounds,
+    instant: instantInfo,
+    loggedIn: authStatus,
+    favorite: (id, on) => (on ? favAction(`/api/v1/favorite/add/${id}/`, id) : favAction(`/remove/${id}/`, id)),
+    send: (msg) => { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('remote', msg); },
+  },
+});
+ipcMain.handle('remote-info', () => remote.info());
+ipcMain.handle('remote-enable', async (_e, on) => { const info = await remote.setEnabled(!!on); updateTray(); return info; });
+ipcMain.handle('remote-new-pin', () => { const info = remote.newPin(); updateTray(); return info; });
+ipcMain.on('volume-changed', (_e, v) => remote.setVolume(v));
+app.on('will-quit', () => remote.shutdown());
+
+// Runs in the background: closing the window only hides it, so the iPhone remote keeps working.
+// A menu-bar icon shows the remote's state and PIN and is where the app is really quit from
+// (or ⌘Q / Dock → Quit). The window comes back from the menu bar or by clicking the Dock icon.
+let tray = null;
+let quitting = false;
+app.on('before-quit', () => { quitting = true; });
+
+// With the window closed, the app lives only in the menu bar: no Dock icon, no ⌘-Tab entry.
+// The Dock icon comes back whenever the window is shown again.
+const setDockVisible = (visible) => {
+  if (!app.dock) return Promise.resolve();
+  if (visible) return app.dock.show();
+  app.dock.hide();
+  return Promise.resolve();
+};
+
+async function showMainWindow() {
+  if (!mainWin || mainWin.isDestroyed()) return;
+  await setDockVisible(true);
+  mainWin.show();
+  mainWin.focus();
+}
+
+function hideMainWindow() {
+  if (!mainWin || mainWin.isDestroyed()) return;
+  mainWin.hide();
+  setDockVisible(false);
+}
+
+const openAtLogin = () => process.platform === 'darwin' && app.getLoginItemSettings().openAtLogin;
+
+function updateTray() {
+  if (!tray) return;
+  const info = remote.info();
+  const status = !info.enabled ? 'iPhone remote: off'
+    : info.running ? `iPhone remote: on · PIN ${info.pin}`
+    : 'iPhone remote: not running';
+  tray.setToolTip(`MyInstants — ${status}`);
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: status, enabled: false },
+    ...(info.running && info.addresses.length ? [{ label: `Address: ${info.addresses[0]}:${info.port}`, enabled: false }] : []),
+    { type: 'separator' },
+    { label: 'Show MyInstants', click: showMainWindow },
+    { label: 'Stop all sounds', click: () => { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('remote', { action: 'stop' }); } },
+    { type: 'separator' },
+    { label: 'Allow iPhone remote', type: 'checkbox', checked: info.enabled,
+      click: async (item) => { await remote.setEnabled(item.checked); updateTray(); } },
+    // Only takes effect for the built app in /Applications, not for `npm start`.
+    { label: 'Open at login', type: 'checkbox', checked: openAtLogin(), enabled: app.isPackaged,
+      click: (item) => { app.setLoginItemSettings({ openAtLogin: item.checked }); updateTray(); } },
+    { type: 'separator' },
+    { label: 'Quit MyInstants', accelerator: 'CommandOrControl+Q', click: () => app.quit() },
+  ]));
+}
+
 app.whenReady().then(() => {
+  // Opened at login: start quietly in the menu bar instead of popping the window up.
+  const startHidden = process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAtLogin;
   const win = new BrowserWindow({
     width: 1100, height: 760, minWidth: 920, minHeight: 400,
     backgroundColor: '#15202b',
     titleBarStyle: 'hiddenInset',
-    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+    show: !startHidden,
+    // Keeps playback and remote commands at full speed while the window is hidden.
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), backgroundThrottling: false },
   });
   mainWin = win;
   win.on('resize', layoutSiteView);
-  // The hidden scraping window would otherwise keep the app alive with no window to show.
-  win.on('closed', () => app.quit());
+  win.on('close', (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    hideMainWindow();
+  });
   win.loadFile('index.html');
+  if (startHidden) setDockVisible(false);
+  remote.start();
+
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'trayTemplate.png'));
+  icon.setTemplateImage(true);
+  tray = new Tray(icon);
+  updateTray();
+  setTimeout(updateTray, 500); // the server's port is known once it's listening
 });
 
+app.on('activate', showMainWindow); // Dock icon clicked (while it's still there)
+
+// The hidden scraping window keeps one window alive, so this only runs on a real quit.
 app.on('window-all-closed', () => app.quit());

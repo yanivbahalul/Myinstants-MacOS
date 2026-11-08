@@ -13,7 +13,7 @@
     "prestart": "npm run ffmpeg",
     "start": "electron .",
     "prebuild": "npm run ffmpeg",
-    "build": "electron-packager . MyInstants --platform=darwin --arch=arm64 --overwrite --prune --icon=build/icon.icns --ignore=^/docs --ignore=^/build --ignore=README.md --app-bundle-id=com.electron.myinstants --helper-bundle-id=com.electron.myinstants.helper",
+    "build": "electron-packager . MyInstants --platform=darwin --arch=arm64 --overwrite --prune --icon=build/icon.icns --ignore=^/docs --ignore=^/build --ignore=^/ios --ignore=README.md --app-bundle-id=com.electron.myinstants --helper-bundle-id=com.electron.myinstants.helper",
     "postbuild": "find MyInstants-darwin-arm64/MyInstants.app -name '._*' -delete && for h in \"MyInstants Helper.app\" \"MyInstants Helper (GPU).app\" \"MyInstants Helper (Renderer).app\" \"MyInstants Helper (Plugin).app\"; do codesign --force --sign - \"MyInstants-darwin-arm64/MyInstants.app/Contents/Frameworks/$h\"; done && codesign --force --deep --sign - MyInstants-darwin-arm64/MyInstants.app && codesign --verify --deep --strict MyInstants-darwin-arm64/MyInstants.app",
     "zip": "ditto -c -k --keepParent MyInstants-darwin-arm64/MyInstants.app MyInstants-macOS-arm64.zip"
   },
