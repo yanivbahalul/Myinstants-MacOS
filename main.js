@@ -500,10 +500,26 @@ let tray = null;
 let quitting = false;
 app.on('before-quit', () => { quitting = true; });
 
-function showMainWindow() {
+// With the window closed, the app lives only in the menu bar: no Dock icon, no ⌘-Tab entry.
+// The Dock icon comes back whenever the window is shown again.
+const setDockVisible = (visible) => {
+  if (!app.dock) return Promise.resolve();
+  if (visible) return app.dock.show();
+  app.dock.hide();
+  return Promise.resolve();
+};
+
+async function showMainWindow() {
   if (!mainWin || mainWin.isDestroyed()) return;
+  await setDockVisible(true);
   mainWin.show();
   mainWin.focus();
+}
+
+function hideMainWindow() {
+  if (!mainWin || mainWin.isDestroyed()) return;
+  mainWin.hide();
+  setDockVisible(false);
 }
 
 const openAtLogin = () => process.platform === 'darwin' && app.getLoginItemSettings().openAtLogin;
@@ -548,9 +564,10 @@ app.whenReady().then(() => {
   win.on('close', (e) => {
     if (quitting) return;
     e.preventDefault();
-    win.hide();
+    hideMainWindow();
   });
   win.loadFile('index.html');
+  if (startHidden) setDockVisible(false);
   remote.start();
 
   const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'trayTemplate.png'));
@@ -560,7 +577,7 @@ app.whenReady().then(() => {
   setTimeout(updateTray, 500); // the server's port is known once it's listening
 });
 
-app.on('activate', showMainWindow); // Dock icon clicked while the window is hidden
+app.on('activate', showMainWindow); // Dock icon clicked (while it's still there)
 
 // The hidden scraping window keeps one window alive, so this only runs on a real quit.
 app.on('window-all-closed', () => app.quit());

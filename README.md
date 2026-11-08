@@ -117,7 +117,7 @@ flowchart LR
 
 The phone app remembers the Mac and reconnects on its own, even if the Mac's IP address changes.
 
-**Runs in the background:** closing the window only hides it — the app stays in the **menu bar** (the button icon at the top of the screen) so the phone keeps working. The menu-bar icon shows the remote's status and PIN, turns the remote on/off, and has **Open at login** and **Quit MyInstants**. Click the Dock icon or *Show MyInstants* to bring the window back.
+**Runs in the background:** closing the window only hides it — the app leaves the Dock and stays in the **menu bar** (the button icon at the top of the screen) so the phone keeps working. Its Dock icon comes back when you open the window again. The menu-bar icon shows the remote's status and PIN, turns the remote on/off, and has **Open at login** and **Quit MyInstants**. *Show MyInstants* brings the window back.
 
 **Installing the iPhone app** (free, needs a Mac with **Xcode 16+**):
 
