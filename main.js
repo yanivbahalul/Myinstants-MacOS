@@ -4,6 +4,7 @@ const fs = require('fs');
 const { parseSounds, parseProfile, parseInstant, parsePager } = require('./parse');
 const os = require('os');
 const { execFile } = require('child_process');
+const { createRemote } = require('./remote');
 
 // myinstants.com rejects sounds over 300KB and MP3s with embedded cover art ("File type is not
 // supported"). Stripping the tags is plain byte work done here, so a normal MP3 needs nothing
@@ -218,7 +219,9 @@ const withPage = (p, n) => (n > 1 ? p + (p.includes('?') ? '&' : '?') + 'page=' 
 // nothing found via search could ever be favorited. /en/search/?name=X turns out to render the exact
 // same tile markup (and real favorite(id) buttons) as every other list page, confirmed live, so
 // 'sounds' below already handles it — no separate endpoint needed.
-ipcMain.handle('sounds', async (_e, { path: p, page }) => {
+// Shared by the desktop window (IPC) and the iPhone remote (remote.js).
+async function listSounds(p, page) {
+  if (typeof p !== 'string') throw new Error('bad path');
   const tries = p === '/en/index/il/' ? [p, '/en/index/us/'] : [p];
   let html;
   for (const t of tries) {
@@ -227,19 +230,23 @@ ipcMain.handle('sounds', async (_e, { path: p, page }) => {
     if (sounds.length) return { sounds: sounds.map(toTile), pager: parsePager(html) };
   }
   return { sounds: [], pager: parsePager(html) };
-});
+}
+
+async function instantInfo(soundPage) {
+  if (!/^\/en\/instant\/[^/]/.test(soundPage)) throw new Error('bad path');
+  const s = parseInstant(await getHtml(soundPage));
+  if (!s) return null;
+  return { ...s, url: s.path && BASE + s.path, related: s.related.map(toTile) };
+}
+
+ipcMain.handle('sounds', (_e, { path: p, page }) => listSounds(p, page));
 
 ipcMain.handle('profile', async (_e, soundPage) => {
   if (!/^\/en\/instant\/[^/]/.test(soundPage)) throw new Error('bad path');
   return parseProfile(await getHtml(soundPage)) || null;
 });
 
-ipcMain.handle('instant', async (_e, soundPage) => {
-  if (!/^\/en\/instant\/[^/]/.test(soundPage)) throw new Error('bad path');
-  const s = parseInstant(await getHtml(soundPage));
-  if (!s) return null;
-  return { ...s, url: s.path && BASE + s.path, related: s.related.map(toTile) };
-});
+ipcMain.handle('instant', (_e, soundPage) => instantInfo(soundPage));
 
 // Adding and removing a favorite are two unrelated endpoints on the real site, not a symmetric
 // pair — confirmed straight from its own markup/JS, not guessed:
@@ -401,12 +408,13 @@ ipcMain.handle('submit-upload', async (_e, { name, soundPath, imagePath, color, 
 // that, so its presence is a good-enough signal without having to fetch and scrape a whole page for
 // it. The renderer checks this on launch and again every time it leaves the in-app Login/Settings/
 // Logout page, which is what makes the header "sync" after you sign in there.
-ipcMain.handle('auth-status', async () => {
+async function authStatus() {
   const cookies = await session.fromPartition('persist:myinstants-read').cookies.get({ name: 'sessionid' });
   const sid = cookies.length ? cookies[0].value : null;
   if (sid !== lastSessionId) { lastSessionId = sid; clearPageCache(); } // signed in/out or switched account
   return cookies.length > 0;
-});
+}
+ipcMain.handle('auth-status', authStatus);
 
 // Login, Upload, Settings and Logout all used to kick out to the system browser because sign-in
 // (Google/Facebook OAuth, the site's own CSRF check) was assumed not to survive Electron's embedded
@@ -465,6 +473,26 @@ ipcMain.handle('hide-site-page', () => {
   if (mainWin) mainWin.setBrowserView(null);
 });
 
+// The iPhone remote: a small server on the local network that the companion iOS app (ios/) browses
+// through and sends play commands to. Off until turned on from the 📱 menu; every request needs the
+// pairing PIN shown there. Sounds play here, in the main window, through the same player as a click.
+const remote = createRemote({
+  configPath: path.join(app.getPath('userData'), 'remote.json'),
+  version: app.getVersion(),
+  handlers: {
+    sounds: listSounds,
+    instant: instantInfo,
+    loggedIn: authStatus,
+    favorite: (id, on) => (on ? favAction(`/api/v1/favorite/add/${id}/`, id) : favAction(`/remove/${id}/`, id)),
+    send: (msg) => { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('remote', msg); },
+  },
+});
+ipcMain.handle('remote-info', () => remote.info());
+ipcMain.handle('remote-enable', (_e, on) => remote.setEnabled(!!on));
+ipcMain.handle('remote-new-pin', () => remote.newPin());
+ipcMain.on('volume-changed', (_e, v) => remote.setVolume(v));
+app.on('will-quit', () => remote.shutdown());
+
 app.whenReady().then(() => {
   const win = new BrowserWindow({
     width: 1100, height: 760, minWidth: 920, minHeight: 400,
@@ -477,6 +505,7 @@ app.whenReady().then(() => {
   // The hidden scraping window would otherwise keep the app alive with no window to show.
   win.on('closed', () => app.quit());
   win.loadFile('index.html');
+  remote.start();
 });
 
 app.on('window-all-closed', () => app.quit());

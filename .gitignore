@@ -3,3 +3,5 @@ bin/
 MyInstants-darwin-*/
 *.zip
 .DS_Store
+xcuserdata/
+*.xcuserstate
