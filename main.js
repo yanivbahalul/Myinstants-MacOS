@@ -179,10 +179,12 @@ const pageCache = new Map();
 const clearPageCache = () => pageCache.clear();
 let lastSessionId;
 
-function getHtml(p) {
+function getHtml(p, fresh) {
   // Paths come from page markup, so only allow site-relative /en/ paths.
   if (!/^\/en\/[^/]/.test(p)) return Promise.reject(new Error('bad path'));
-  const hit = pageCache.get(p);
+  // fresh: an explicit refresh, e.g. after favoriting on the website or another device, which
+  // this app can't know about.
+  const hit = !fresh && pageCache.get(p);
   if (hit && Date.now() - hit.at < PAGE_TTL) return Promise.resolve(hit.html);
   return fetchHtml(p).then((html) => {
     for (const [k, v] of pageCache) if (Date.now() - v.at >= PAGE_TTL) pageCache.delete(k);
@@ -220,12 +222,12 @@ const withPage = (p, n) => (n > 1 ? p + (p.includes('?') ? '&' : '?') + 'page=' 
 // same tile markup (and real favorite(id) buttons) as every other list page, confirmed live, so
 // 'sounds' below already handles it — no separate endpoint needed.
 // Shared by the desktop window (IPC) and the iPhone remote (remote.js).
-async function listSounds(p, page) {
+async function listSounds(p, page, fresh) {
   if (typeof p !== 'string') throw new Error('bad path');
   const tries = p === '/en/index/il/' ? [p, '/en/index/us/'] : [p];
   let html;
   for (const t of tries) {
-    html = await getHtml(withPage(t, page || 1));
+    html = await getHtml(withPage(t, page || 1), fresh);
     const sounds = parseSounds(html);
     if (sounds.length) return { sounds: sounds.map(toTile), pager: parsePager(html) };
   }
@@ -491,6 +493,7 @@ ipcMain.handle('remote-info', () => remote.info());
 ipcMain.handle('remote-enable', async (_e, on) => { const info = await remote.setEnabled(!!on); updateTray(); return info; });
 ipcMain.handle('remote-new-pin', () => { const info = remote.newPin(); updateTray(); return info; });
 ipcMain.on('volume-changed', (_e, v) => remote.setVolume(v));
+ipcMain.on('playing-changed', (_e, name) => remote.setPlaying(name));
 app.on('will-quit', () => remote.shutdown());
 
 // Runs in the background: closing the window only hides it, so the iPhone remote keeps working.

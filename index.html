@@ -253,8 +253,9 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('show'), 1400);
   }
 
+  // The iPhone remote's player bar shows what's playing here, so main is told when that changes.
   function stopAll() {
-    if (current) { current.pause(); current = null; }
+    if (current) { current.pause(); current = null; window.api.playingChanged(null); }
   }
 
   function play(s) {
@@ -262,7 +263,11 @@
     const a = new Audio(s.url);
     a.volume = +$('vol').value;
     current = a;
-    a.play().catch(() => {});
+    const done = () => { if (current === a) { current = null; window.api.playingChanged(null); } };
+    a.addEventListener('ended', done);
+    a.addEventListener('error', done);
+    window.api.playingChanged(s.name || 'Sound');
+    a.play().catch(done);
   }
 
   function tileFor(s) {
@@ -675,7 +680,7 @@
   // iPhone remote (remote.js + the iOS app in ios/): the phone browses through this Mac and sends
   // play/stop/volume commands, which go through the same player as a click here.
   window.api.onRemote((msg) => {
-    if (msg.action === 'play') { play({ url: msg.url }); if (msg.name) toast(`📱 ${msg.name}`); }
+    if (msg.action === 'play') { play({ url: msg.url, name: msg.name }); if (msg.name) toast(`📱 ${msg.name}`); }
     else if (msg.action === 'stop') stopAll();
     else if (msg.action === 'volume') { $('vol').value = msg.volume; if (current) current.volume = msg.volume; }
     else if (msg.action === 'favorites-changed' && view.key === 'acc:favs') show(view, pageNo);

@@ -50,6 +50,8 @@ struct Hello: Decodable {
     let version: String
     let loggedIn: Bool
     let volume: Double?
+    /// What the Mac is playing right now; nil when it's silent.
+    let playing: String?
 }
 
 struct OK: Decodable {

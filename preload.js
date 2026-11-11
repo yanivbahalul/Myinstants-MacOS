@@ -21,4 +21,5 @@ contextBridge.exposeInMainWorld('api', {
   remoteNewPin: () => ipcRenderer.invoke('remote-new-pin'),
   onRemote: (cb) => ipcRenderer.on('remote', (_e, msg) => cb(msg)),
   volumeChanged: (v) => ipcRenderer.send('volume-changed', v),
+  playingChanged: (name) => ipcRenderer.send('playing-changed', name),
 });

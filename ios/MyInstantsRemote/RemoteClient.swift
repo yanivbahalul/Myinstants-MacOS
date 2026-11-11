@@ -47,6 +47,9 @@ final class RemoteClient: ObservableObject {
     private var volumeTask: Task<Void, Never>?
     private var bannerTask: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
+    /// When this phone last changed the volume or playback itself. A status answer that was
+    /// already on its way then is older than what's on screen, so it's ignored.
+    private var lastLocalChange = Date.distantPast
     private let haptics = UIImpactFeedbackGenerator(style: .medium)
 
     init() {
@@ -120,8 +123,7 @@ final class RemoteClient: ObservableObject {
         let hello: Hello = try await request(candidate, "GET", "/api/hello", timeout: 6)
         mac = Mac(name: hello.name, host: candidate.host, port: candidate.port, pin: candidate.pin)
         saveMac()
-        loggedIn = hello.loggedIn
-        if let v = hello.volume { volume = v }
+        apply(hello)
         connectError = nil
         reachable = true
         state = .connected
@@ -159,13 +161,22 @@ final class RemoteClient: ObservableObject {
         guard state == .connected, let current = mac else { return }
         do {
             let hello: Hello = try await request(current, "GET", "/api/hello", timeout: 4)
-            loggedIn = hello.loggedIn
+            apply(hello)
             setReachable(true)
         } catch RemoteError.badPin {
             fail("The PIN changed on \(current.name). Enter the new one.")
         } catch {
             setReachable(await relocate())
         }
+    }
+
+    /// Takes over the Mac's own state, so the player bar follows a volume change or a sound
+    /// that was started, stopped or simply finished over there.
+    private func apply(_ hello: Hello) {
+        loggedIn = hello.loggedIn
+        guard Date().timeIntervalSince(lastLocalChange) > 2 else { return }
+        if let v = hello.volume { volume = v }
+        nowPlaying = hello.playing
     }
 
     private func setReachable(_ ok: Bool) {
@@ -186,7 +197,7 @@ final class RemoteClient: ObservableObject {
         guard state == .connected else { return false }
         mac = moved
         saveMac()
-        loggedIn = hello.loggedIn
+        apply(hello)
         return true
     }
 
@@ -198,16 +209,16 @@ final class RemoteClient: ObservableObject {
 
     /// Re-reads whether the Mac is signed in to myinstants.com (it may have just signed in there).
     func refreshStatus() async {
-        if let hello: Hello = try? await call("GET", "/api/hello") {
-            loggedIn = hello.loggedIn
-            if let v = hello.volume { volume = v }
-        }
+        if let hello: Hello = try? await call("GET", "/api/hello") { apply(hello) }
     }
 
     // MARK: Browsing
 
-    func sounds(_ feed: Feed, page: Int) async throws -> SoundPage {
-        try await call("GET", "/api/sounds", query: ["path": feed.path, "page": String(page)])
+    /// `fresh` skips the Mac's few-minute page cache (pull to refresh).
+    func sounds(_ feed: Feed, page: Int, fresh: Bool = false) async throws -> SoundPage {
+        var query = ["path": feed.path, "page": String(page)]
+        if fresh { query["fresh"] = "1" }
+        return try await call("GET", "/api/sounds", query: query)
     }
 
     func detail(_ page: String) async throws -> SoundDetail {
@@ -223,6 +234,7 @@ final class RemoteClient: ObservableObject {
 
     func play(_ url: String, name: String) {
         haptics.impactOccurred()
+        lastLocalChange = Date()
         nowPlaying = name
         Task {
             do {
@@ -236,6 +248,7 @@ final class RemoteClient: ObservableObject {
     func play(_ sound: Sound) { play(sound.url, name: sound.name) }
 
     func stop() {
+        lastLocalChange = Date()
         nowPlaying = nil
         Task {
             do {
@@ -248,6 +261,7 @@ final class RemoteClient: ObservableObject {
 
     /// Follows the slider live, but only sends the latest value once it settles for a moment.
     func setVolume(_ value: Double) {
+        lastLocalChange = Date()
         volume = value
         volumeTask?.cancel()
         volumeTask = Task {

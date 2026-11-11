@@ -43,7 +43,7 @@ function createRemote({ configPath, version, handlers }) {
   save();
 
   const name = computerName();
-  let server = null, port = null, advert = null, volume = 1, lastError = null;
+  let server = null, port = null, advert = null, volume = 1, playing = null, lastError = null;
   let failures = [];
 
   const pinMatches = (given) => {
@@ -85,10 +85,11 @@ function createRemote({ configPath, version, handlers }) {
     const r = `${req.method} ${url.pathname}`;
     switch (r) {
       case 'GET /api/hello':
-        return send(res, 200, { name, version, loggedIn: await handlers.loggedIn().catch(() => false), volume });
+        return send(res, 200, { name, version, loggedIn: await handlers.loggedIn().catch(() => false), volume, playing });
       case 'GET /api/sounds': {
         const page = Math.max(1, Math.min(500, parseInt(url.searchParams.get('page'), 10) || 1));
-        return send(res, 200, await handlers.sounds(url.searchParams.get('path'), page));
+        // fresh=1 is the phone's pull-to-refresh: skip the Mac's page cache and ask the site again.
+        return send(res, 200, await handlers.sounds(url.searchParams.get('path'), page, url.searchParams.get('fresh') === '1'));
       }
       case 'GET /api/instant': {
         const d = await handlers.instant(url.searchParams.get('page'));
@@ -124,9 +125,12 @@ function createRemote({ configPath, version, handlers }) {
   function advertise() {
     if (process.platform !== 'darwin' || advert) return;
     try {
-      advert = spawn('dns-sd', ['-R', name, SERVICE_TYPE, 'local', String(port), `v=${version}`], { stdio: 'ignore' });
-      advert.on('exit', () => { advert = null; });
-      advert.on('error', () => { advert = null; });
+      const child = spawn('dns-sd', ['-R', name, SERVICE_TYPE, 'local', String(port), `v=${version}`], { stdio: 'ignore' });
+      advert = child;
+      // Only forget this one: a killed advert exits later, when a newer one may already be running.
+      const gone = () => { if (advert === child) advert = null; };
+      child.on('exit', gone);
+      child.on('error', gone);
     } catch { advert = null; }
   }
 
@@ -172,6 +176,8 @@ function createRemote({ configPath, version, handlers }) {
     },
     newPin() { cfg.pin = newPinValue(); failures = []; save(); return info(); },
     setVolume(v) { if (Number.isFinite(+v)) volume = Math.max(0, Math.min(1, +v)); },
+    // What the Mac is playing right now (null when silent), so the phone's player bar can follow it.
+    setPlaying(n) { playing = typeof n === 'string' ? n.slice(0, 200) : null; },
   };
 }
 

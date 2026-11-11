@@ -23,7 +23,7 @@ struct SoundListView: View {
                 .padding(.vertical, 24)
         }
         .navigationTitle(feed.title)
-        .refreshable { await reload() }
+        .refreshable { await reload(fresh: true) }
         .task(id: feed) {
             if sounds.isEmpty { await reload() }
         }
@@ -55,22 +55,22 @@ struct SoundListView: View {
         }
     }
 
-    private func reload() async {
+    private func reload(fresh: Bool = false) async {
         sounds = []
         page = 0
         hasMore = true
         error = nil
-        await loadMore()
+        await loadMore(fresh: fresh)
     }
 
-    private func loadMore() async {
+    private func loadMore(fresh: Bool = false) async {
         guard !loading, hasMore else { return }
         loading = true
         error = nil
         defer { loading = false }
         do {
             let next = page + 1
-            let result = try await client.sounds(feed, page: next)
+            let result = try await client.sounds(feed, page: next, fresh: fresh)
             let known = Set(sounds.map(\.id))
             sounds.append(contentsOf: result.sounds.filter { !known.contains($0.id) })
             page = next
