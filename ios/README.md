@@ -22,8 +22,8 @@ All requests need the header `X-Pin: <6-digit PIN>`. JSON in and out.
 
 | Request | Does |
 |---|---|
-| `GET /api/hello` | `{ name, version, loggedIn, volume }` — also used to check the PIN. |
-| `GET /api/sounds?path=/en/...&page=N` | A list page, same shape the desktop window gets. |
+| `GET /api/hello` | `{ name, version, loggedIn, volume, playing }` — also used to check the PIN. |
+| `GET /api/sounds?path=/en/...&page=N[&fresh=1]` | A list page, same shape the desktop window gets. `fresh=1` skips the Mac's page cache (pull to refresh). |
 | `GET /api/instant?page=/en/instant/...` | A sound's own page. |
 | `POST /api/play {url, name}` | Plays a myinstants.com sound on the Mac. |
 | `POST /api/stop` | Stops playback. |
